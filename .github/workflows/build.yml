@@ -13,63 +13,124 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
+
+      # =========================================================
+      # 1. REPOYU CEK
+      # =========================================================
       - name: Repoyu Cek
         uses: actions/checkout@v4
 
+
+      # =========================================================
+      # 2. ZIP DOSYASINI CIKAR
+      # =========================================================
       - name: ZIP Cikar
         shell: bash
         run: |
           set -e
 
+          echo "Dosyalar:"
+          ls -la
+
           if [ -f "DinleAI-NewLogo-VIP.zip" ]; then
-            echo "DinleAI-NewLogo-VIP.zip bulundu"
+            echo "DinleAI-NewLogo-VIP.zip bulundu."
             unzip -o "DinleAI-NewLogo-VIP.zip" -d .
+
           elif [ -f "DinleAI-Android-Fixed.zip" ]; then
-            echo "DinleAI-Android-Fixed.zip bulundu"
+            echo "DinleAI-Android-Fixed.zip bulundu."
             unzip -o "DinleAI-Android-Fixed.zip" -d .
+
+          else
+            echo "ZIP dosyasi bulunamadi."
+            exit 1
           fi
 
+
+      # =========================================================
+      # 3. PROJE KLASORUNU BUL
+      # =========================================================
       - name: Proje Klasorunu Bul
         shell: bash
         run: |
-          TARGET_DIR=$(find . -maxdepth 3 -type f -name "package.json" \
+          set -e
+
+          echo "package.json dosyalari araniyor..."
+
+          TARGET_DIR=$(find . \
+            -maxdepth 4 \
+            -type f \
+            -name "package.json" \
             -not -path "./node_modules/*" \
             -exec dirname {} \; | head -n 1)
 
           if [ -z "$TARGET_DIR" ]; then
-            echo "package.json bulunamadi!"
+            echo "HATA: package.json bulunamadi!"
+            echo "Mevcut dosyalar:"
+            find . -maxdepth 3 -type f | head -100
             exit 1
           fi
 
-          echo "TARGET_DIR=$TARGET_DIR" >> "$GITHUB_ENV"
-          echo "Proje klasoru: $TARGET_DIR"
+          echo "Proje klasoru bulundu: $TARGET_DIR"
 
+          echo "TARGET_DIR=$TARGET_DIR" >> "$GITHUB_ENV"
+
+
+      # =========================================================
+      # 4. NODE.JS
+      # =========================================================
+      # NOT:
+      # npm cache KULLANMIYORUZ.
+      # Onceki hatanin sebebi cache-dependency-path idi.
+      # =========================================================
       - name: Node.js Kur
         uses: actions/setup-node@v4
         with:
           node-version: 20
-          cache: npm
-          cache-dependency-path: ${{ env.TARGET_DIR }}/package-lock.json
 
+
+      # =========================================================
+      # 5. JAVA 17
+      # =========================================================
       - name: Java 17 Kur
         uses: actions/setup-java@v4
         with:
           distribution: temurin
           java-version: '17'
 
+
+      # =========================================================
+      # 6. NODE BAGIMLILIKLARI
+      # =========================================================
       - name: Node Bagimliliklarini Yukle
         working-directory: ${{ env.TARGET_DIR }}
+        shell: bash
         run: |
           set -e
 
-          if [ -f package-lock.json ]; then
+          echo "Node:"
+          node --version
+
+          echo "NPM:"
+          npm --version
+
+          echo "package.json:"
+          cat package.json
+
+          if [ -f "package-lock.json" ]; then
+            echo "package-lock.json bulundu."
             npm ci --legacy-peer-deps
           else
+            echo "package-lock.json bulunamadi."
             npm install --legacy-peer-deps
           fi
 
+
+      # =========================================================
+      # 7. ENV DOSYASI
+      # =========================================================
       - name: Ortam Degiskenlerini Olustur
         working-directory: ${{ env.TARGET_DIR }}
+        shell: bash
         run: |
           cat > .env << EOF
           LIVEAVATAR_API_KEY=${{ secrets.LIVEAVATAR_API_KEY }}
@@ -77,8 +138,15 @@ jobs:
           LIVEAVATAR_CONTEXT_ID=${{ secrets.LIVEAVATAR_CONTEXT_ID }}
           EOF
 
+          echo ".env olusturuldu."
+
+
+      # =========================================================
+      # 8. CAPACITOR CONFIG
+      # =========================================================
       - name: Capacitor Config Olustur
         working-directory: ${{ env.TARGET_DIR }}
+        shell: bash
         run: |
           rm -f capacitor.config.ts
 
@@ -90,66 +158,138 @@ jobs:
           }
           EOF
 
+          echo "Capacitor config:"
+          cat capacitor.config.json
+
+
+      # =========================================================
+      # 9. WEB UYGULAMASINI DERLE
+      # =========================================================
       - name: Web Uygulamasini Derle
         working-directory: ${{ env.TARGET_DIR }}
+        shell: bash
         run: |
           set -e
+
+          echo "Web uygulamasi derleniyor..."
+
           npm run build
 
+          echo "Build tamamlandi."
+
+          if [ ! -d "dist" ]; then
+            echo "HATA: dist klasoru olusmadi!"
+            exit 1
+          fi
+
+          echo "dist klasoru:"
+          find dist -maxdepth 2 -type f | head -50
+
+
+      # =========================================================
+      # 10. CAPACITOR ANDROID HAZIRLA
+      # =========================================================
       - name: Capacitor Android Hazirla
         working-directory: ${{ env.TARGET_DIR }}
+        shell: bash
         run: |
           set -e
 
           if [ ! -d "android" ]; then
-            echo "Android klasoru yok, Capacitor Android ekleniyor..."
+            echo "Android klasoru yok."
+            echo "Capacitor Android ekleniyor..."
+
             npx cap add android
           else
             echo "Android klasoru zaten mevcut."
           fi
 
+          echo "Capacitor sync basliyor..."
+
           npx cap sync android
 
+          echo "Capacitor sync tamamlandi."
+
+
+      # =========================================================
+      # 11. GRADLE KURULUMU
+      # =========================================================
       - name: Gradle Kurulumu
         uses: gradle/actions/setup-gradle@v4
 
+
+      # =========================================================
+      # 12. GRADLE WRAPPER KONTROL
+      # =========================================================
       - name: Gradle Wrapper Kontrolu
         working-directory: ${{ env.TARGET_DIR }}/android
         shell: bash
         run: |
           set -e
 
+          echo "Android klasoru:"
+          ls -la
+
           if [ ! -f "./gradlew" ]; then
+
             echo "gradlew bulunamadi."
-            echo "Gradle wrapper olusturuluyor..."
+            echo "Gradle Wrapper 8.7 olusturuluyor..."
 
             gradle wrapper --gradle-version 8.7
 
-            chmod +x gradlew
           else
-            echo "Mevcut gradlew kullanilacak."
-            chmod +x gradlew
+
+            echo "Mevcut gradlew bulundu."
+            echo "Mevcut wrapper kullanilacak."
+
           fi
 
+          chmod +x gradlew
+
+          echo "Gradle versiyonu:"
           ./gradlew --version
 
+
+      # =========================================================
+      # 13. ANDROID APK DERLE
+      # =========================================================
       - name: Android APK Derle
         working-directory: ${{ env.TARGET_DIR }}/android
         shell: bash
         run: |
           set -e
 
+          echo "Android APK derlemesi basliyor..."
+
           ./gradlew assembleDebug \
             --no-daemon \
             --stacktrace \
             --warning-mode all
 
+          echo "APK derlemesi tamamlandi."
+
+
+      # =========================================================
+      # 14. APK BUL
+      # =========================================================
       - name: APK Dosyasini Bul
         shell: bash
         run: |
-          echo "APK dosyalari:"
-          find . -type f -name "*.apk" -print
+          echo "======================================"
+          echo "APK DOSYALARI"
+          echo "======================================"
 
+          find "${{ env.TARGET_DIR }}/android" \
+            -type f \
+            -name "*.apk" \
+            -print
+
+          echo "======================================"
+
+
+      # =========================================================
+      # 15. APK YUKLE
+      # =========================================================
       - name: APK Dosyasini Yukle
         uses: actions/upload-artifact@v4
         with:
