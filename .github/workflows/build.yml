@@ -13,8 +13,21 @@ jobs:
           sudo apt-get update && sudo apt-get install -y unzip
           unzip -o DinleAI-Android-FullProject.zip -d .
 
-      - name: Capacitor Config Duzelt
+      - name: Vite ve Capacitor Ayarlarini Duzelt
         run: |
+          # Vite goreceli yol (base: './') ayari ekleme
+          node -e '
+            const fs = require("fs");
+            if (fs.existsSync("vite.config.js")) {
+              let content = fs.readFileSync("vite.config.js", "utf8");
+              if (!content.includes("base:")) {
+                content = content.replace("defineConfig({", "defineConfig({\n  base: \"./\",");
+                fs.writeFileSync("vite.config.js", content);
+              }
+            }
+          '
+
+          # Capacitor config hazirlama
           rm -f capacitor.config.ts
           cat << 'EOF' > capacitor.config.json
           {
@@ -35,24 +48,15 @@ jobs:
       - name: Web Derle
         run: npm run build
 
-      - name: Derleme Klasorunu Kontrol Et ve Tas
+      - name: Derleme Klasorunu Yonlendir ve Yollari Duzelt
         run: |
           mkdir -p www
-          
-          # Derleme çıktılarını www klasörüne kopyala
           if [ -d "dist" ]; then cp -r dist/* www/; fi
           if [ -d "build" ]; then cp -r build/* www/; fi
-          if [ -d "out" ]; then cp -r out/* www/; fi
-          if [ -d "public" ] && [ ! -f "www/index.html" ]; then cp -r public/* www/; fi
           
-          # Doğrulama: www/index.html dosyası gerçekten var mı?
-          if [ ! -f "www/index.html" ]; then
-            echo "CRITICAL ERROR: www/index.html dosyasi bulunamadi!"
-            echo "Projedeki mevcut klasorler:"
-            ls -la
-            exit 1
-          fi
-          echo "BAŞARILI: www/index.html doğrulandı."
+          # HTML icindeki /assets yollarini ./assets olarak duzelt
+          sed -i 's/="\/assets/=".\/assets/g' www/index.html || true
+          sed -i "s/='\/assets/='.\/assets/g" www/index.html || true
 
       - name: Capacitor Sync
         run: npx cap sync android
@@ -75,30 +79,3 @@ jobs:
           path: android/app/build/outputs/apk/debug/app-debug.apk
           overwrite: true
           
-      - name: Derleme Klasorunu Yonlendir
-        run: |
-          mkdir -p www
-          cp -r dist/* www/ 2>/dev/null || true
-          cp -r build/* www/ 2>/dev/null || true
-          cp -r out/* www/ 2>/dev/null || true
-
-      - name: Capacitor Sync
-        run: npx cap sync android
-
-      - name: Java Kur
-        uses: actions/setup-java@v4
-        with:
-          distribution: 'zulu'
-          java-version: '17'
-
-      - name: APK Derle
-        run: |
-          cd android
-          gradle assembleDebug
-
-      - name: APK Yukle
-        uses: actions/upload-artifact@v4
-        with:
-          name: app-debug
-          path: android/app/build/outputs/apk/debug/app-debug.apk
-          overwrite: true
