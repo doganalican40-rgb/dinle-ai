@@ -13,15 +13,24 @@ jobs:
           sudo apt-get update && sudo apt-get install -y unzip
           unzip -o DinleAI-Android-FullProject.zip -d .
 
+      - name: Capacitor Config Düzelt
+        run: |
+          rm -f capacitor.config.ts
+          cat << 'EOF' > capacitor.config.json
+          {
+            "appId": "com.dinle.ai",
+            "appName": "Dinle AI",
+            "webDir": "www"
+          }
+          EOF
+
       - name: Node.js Kur
         uses: actions/setup-node@v4
         with:
           node-version: 20
 
       - name: Bagimliliklari Yukle
-        run: |
-          npm install --legacy-peer-deps
-          npm install -D typescript ts-node
+        run: npm install --legacy-peer-deps
 
       - name: Web Derle
         run: npm run build
