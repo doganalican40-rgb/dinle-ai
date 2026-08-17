@@ -10,7 +10,6 @@ jobs:
 
       - name: ZIP Cikar
         run: |
-          sudo apt-get update && sudo apt-get install -y unzip
           unzip -o DinleAI-Android-Fixed.zip -d .
 
       - name: Vite ve Capacitor Ayarlarini Duzelt
@@ -78,7 +77,8 @@ jobs:
       - name: APK Derle
         run: |
           cd dinlefix/android
-          gradle assembleDebug
+          chmod +x gradlew || true
+          ./gradlew assembleDebug || gradle assembleDebug
 
       - name: APK Yukle
         uses: actions/upload-artifact@v4
@@ -86,4 +86,3 @@ jobs:
           name: app-debug
           path: dinlefix/android/app/build/outputs/apk/debug/app-debug.apk
           overwrite: true
-          
