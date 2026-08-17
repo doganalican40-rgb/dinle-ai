@@ -51,31 +51,27 @@ jobs:
           cd "$TARGET_DIR"
           npm run build
 
-      - name: Asset Senkronizasyonu ve Yol Duzeltme
-        run: |
-          TARGET_DIR=$(find . -maxdepth 2 -type d -name "dinlefix" | head -n 1)
-          if [ -z "$TARGET_DIR" ]; then TARGET_DIR="."; fi
-          cd "$TARGET_DIR"
-          node scripts/sync-android-assets.mjs || true
-
       - name: Java Kur
         uses: actions/setup-java@v4
         with:
           distribution: 'zulu'
           java-version: '17'
 
-      - name: Gradle Onbellek Hazirla ve APK Derle
+      - name: Android Klasorunu Hazirla ve APK Derle
         run: |
-          GRADLEW_PATH=$(find . -name "gradlew" | head -n 1)
-          if [ -n "$GRADLEW_PATH" ]; then
-            ANDROID_DIR=$(dirname "$GRADLEW_PATH")
-            cd "$ANDROID_DIR"
-            chmod +x gradlew
-            ./gradlew assembleDebug --stacktrace
-          else
-            echo "gradlew bulunamadi!"
-            exit 1
+          TARGET_DIR=$(find . -maxdepth 2 -type d -name "dinlefix" | head -n 1)
+          if [ -z "$TARGET_DIR" ]; then TARGET_DIR="."; fi
+          cd "$TARGET_DIR"
+
+          # Android platformu yoksa ekle ve senkronize et
+          if [ ! -d "android" ]; then
+            npx cap add android || true
           fi
+          npx cap sync android || true
+
+          cd android
+          chmod +x gradlew || true
+          ./gradlew assembleDebug --stacktrace
 
       - name: APK Dosyasini Yukle
         uses: actions/upload-artifact@v4
