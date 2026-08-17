@@ -68,8 +68,10 @@ jobs:
           distribution: 'zulu'
           java-version: '17'
 
-      - name: Gradle Kurulumu
+      - name: Gradle Kurulumu (Uyumlu Surum)
         uses: gradle/actions/setup-gradle@v3
+        with:
+          gradle-version: '8.2.1'
 
       - name: Android Klasorunu Hazirla ve APK Derle
         run: |
@@ -85,10 +87,9 @@ jobs:
           npx cap sync android
 
           cd android
-          # Eksik gradlew dosyasını doğrudan sistem Gradle'ı ile üretiyoruz
-          gradle wrapper
+          gradle wrapper --gradle-version 8.2.1
           chmod +x gradlew
-          ./gradlew assembleDebug --stacktrace
+          ./gradlew assembleDebug
 
       - name: APK Dosyasini Yukle
         uses: actions/upload-artifact@v4
