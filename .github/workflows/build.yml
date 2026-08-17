@@ -18,7 +18,7 @@ jobs:
 
     steps:
       - name: Depoyu indir
-        uses: actions/checkout@v5
+        uses: actions/checkout@v4
 
       - name: ZIP Arşivlerini Çıkar
         shell: bash
@@ -30,15 +30,15 @@ jobs:
           fi
 
       - name: Java 17 kurulumu
-        uses: actions/setup-java@v5
+        uses: actions/setup-java@v4
         with:
           distribution: 'temurin'
           java-version: '17'
 
       - name: Node.js kurulumu
-        uses: actions/setup-node@v5
+        uses: actions/setup-node@v4
         with:
-          node-version: '22'
+          node-version: '20'
 
       - name: Proje klasörlerini bul
         shell: bash
@@ -145,4 +145,3 @@ jobs:
           name: DinleAI-APK
           path: '**/outputs/apk/debug/*.apk'
           if-no-files-found: error
-          
