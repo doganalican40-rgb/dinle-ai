@@ -68,6 +68,105 @@ jobs:
           # Bağımlılıklar
           npm install --legacy-peer-deps
           
+          # Capacitor Kurulumu (Eksik olan Android paketi eklendi)
+          npm install -g @capacitor/cli@latest
+          npm install -D typescript @capacitor/core@latest @capacitor/android@latest || true
+          
+          # Build
+          npm run build
+
+          # Dist hazırlığı
+          if [ -d "dist" ] && [ ! -d "www" ]; then cp -r dist www; fi
+          
+          # Android Platformunu Hazırla ve Senkronize Et
+          if [ ! -d "android" ]; then
+            npx cap add android
+          fi
+          npx cap sync android
+
+      - name: Android Projesini Derle (APK)
+        shell: bash
+        run: |
+          set -x
+          
+          # Android dizinini bul
+          A_DIR=$(find . -maxdepth 3 -type d -name "android" | head -n 1)
+          if [ -z "$A_DIR" ]; then
+            echo "HATA: Android klasörü bulunamadı!"
+            exit 1
+          fi
+          
+          cd "$A_DIR"
+
+          # Gradle Properties
+          cat << 'EOF' > gradle.properties
+          android.useAndroidX=true
+          android.enableJetifier=true
+          org.gradle.jvmargs=-Xmx2048m -Dfile.encoding=UTF-8
+          EOF
+
+          # Kotlin Yapılandırması
+          cat << 'EOF' > kotlin-fix.gradle
+          allprojects {
+              configurations.configureEach {
+                  resolutionStrategy.eachDependency { details ->
+                      if (details.requested.group == "org.jetbrains.kotlin") {
+                          details.useVersion("1.8.22")
+                      }
+                  }
+              }
+          }
+          EOF
+
+          # Gradlew İzinleri ve Derleme
+          chmod +x gradlew || true
+          
+          if [ -f "./gradlew" ]; then
+            ./gradlew assembleDebug --init-script kotlin-fix.gradle --no-daemon -x test
+          else
+            gradle assembleDebug --init-script kotlin-fix.gradle --no-daemon -x test
+          fi
+
+      - name: APK Dosyasını Yükle (Artifact)
+        uses: actions/upload-artifact@v4
+        with:
+          name: DinleAI-APK
+          path: '**/outputs/apk/debug/*.apk'
+          if-no-files-found: error
+          
+      - name: Node.js Kurulumu
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+
+      - name: Proje Konfigürasyonu ve Web Derleme
+        shell: bash
+        run: |
+          set -x
+          
+          # Ana proje dizinini bul
+          P_DIR=$(find . -maxdepth 2 -type d -name "dinlefix" | head -n 1)
+          if [ -z "$P_DIR" ]; then P_DIR="."; fi
+          cd "$P_DIR"
+          
+          # Ortam Değişkenleri
+          echo "LIVEAVATAR_API_KEY=${{ secrets.LIVEAVATAR_API_KEY }}" > .env
+          echo "LIVEAVATAR_AVATAR_ID=${{ secrets.LIVEAVATAR_AVATAR_ID }}" >> .env
+          echo "LIVEAVATAR_CONTEXT_ID=${{ secrets.LIVEAVATAR_CONTEXT_ID }}" >> .env
+
+          # Capacitor JSON Konfigürasyon
+          rm -f capacitor.config.ts
+          cat << 'EOF' > capacitor.config.json
+          {
+            "appId": "com.dinle.ai",
+            "appName": "Dinle AI",
+            "webDir": "dist"
+          }
+          EOF
+
+          # Bağımlılıklar
+          npm install --legacy-peer-deps
+          
           # Capacitor Kurulumu
           npm install -g @capacitor/cli@latest
           npm install -D typescript @capacitor/core@latest || true
