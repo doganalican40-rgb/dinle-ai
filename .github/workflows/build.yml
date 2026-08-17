@@ -1,151 +1,232 @@
-name: Dinle AI APK'sını oluşturun
+name: Dinle AI APK Oluştur
 
 on:
+  workflow_dispatch:
   push:
     branches:
       - ana
-      - main
-  workflow_dispatch:
 
 permissions:
   contents: read
 
 jobs:
-  build-apk:
-    name: APK oluştur
+  build:
+    name: APK
     runs-on: ubuntu-latest
 
     steps:
 
-      # ==========================================
-      # 1. KODU AL
-      # ==========================================
-      - name: Kodu al
-        uses: actions/checkout@v4
+      # ============================================================
+      # 1. PROJEYİ AL
+      # ============================================================
+      - name: Depoyu indir
+        uses: actions/checkout@v5
 
-      # ==========================================
+
+      # ============================================================
       # 2. JAVA 17
-      # ==========================================
-      - name: Java 17 kur
+      # ============================================================
+      - name: Java 17 kurulumu
         uses: actions/setup-java@v5
         with:
           distribution: temurin
           java-version: '17'
           cache: gradle
 
-      # ==========================================
-      # 3. NODE 20
-      # ==========================================
-      - name: Node.js 20 kur
+
+      # ============================================================
+      # 3. NODE.JS
+      # ============================================================
+      - name: Node.js kurulumu
         uses: actions/setup-node@v5
         with:
-          node-version: '20'
+          node-version: '22'
           cache: npm
-          cache-dependency-path: package-lock.json
-        continue-on-error: true
+          cache-dependency-path: |
+            package-lock.json
+            extracted/dinlefix/package-lock.json
 
-      # ==========================================
-      # 4. PROJE KLASÖRÜNÜ BUL
-      # ==========================================
-      - name: Proje klasörünü bul
+
+      # ============================================================
+      # 4. ZIP / PROJE YAPISINI KONTROL ET
+      # ============================================================
+      - name: Proje klasörlerini bul
         shell: bash
         run: |
           set -e
 
           echo "======================================"
-          echo "PROJE KLASÖRÜ ARANIYOR"
+          echo "PROJE KLASÖRLERİ"
           echo "======================================"
 
-          if [ -f "package.json" ]; then
-            PROJECT_DIR="."
-          elif [ -f "dinlefix/package.json" ]; then
-            PROJECT_DIR="dinlefix"
-          elif [ -f "android/app/build.gradle" ]; then
-            PROJECT_DIR="."
-          elif [ -f "dinlefix/android/app/build.gradle" ]; then
-            PROJECT_DIR="dinlefix"
+          echo "Ana dizin:"
+          pwd
+
+          echo ""
+          echo "Dosyalar:"
+          find . -maxdepth 4 -type f \
+            \( -name "package.json" -o -name "settings.gradle" -o -name "build.gradle" -o -name "gradlew" \) \
+            | sort
+
+          echo ""
+          echo "======================================"
+          echo "ANDROID PROJESİ ARANIYOR"
+          echo "======================================"
+
+          ANDROID_DIR=""
+
+          if [ -d "extracted/dinlefix/android" ]; then
+            ANDROID_DIR="extracted/dinlefix/android"
+          elif [ -d "android" ]; then
+            ANDROID_DIR="android"
           else
-            PROJECT_DIR=$(find . -name package.json -not -path "*/node_modules/*" | head -1 | xargs dirname || true)
+            FOUND_ANDROID=$(find . -type f -name "settings.gradle" -o -type f -name "settings.gradle.kts" \
+              | head -n 1 || true)
+
+            if [ -n "$FOUND_ANDROID" ]; then
+              ANDROID_DIR=$(dirname "$FOUND_ANDROID")
+            fi
           fi
 
-          if [ -z "$PROJECT_DIR" ]; then
-            echo "HATA: Proje klasörü bulunamadı."
+          if [ -z "$ANDROID_DIR" ]; then
+            echo "HATA: Android Gradle projesi bulunamadı."
             exit 1
           fi
 
-          echo "Bulunan proje: $PROJECT_DIR"
-          echo "PROJECT_DIR=$PROJECT_DIR" >> "$GITHUB_ENV"
+          echo "Android klasörü:"
+          echo "$ANDROID_DIR"
 
-      # ==========================================
-      # 5. NPM
-      # ==========================================
-      - name: NPM bağımlılıklarını kur
+          echo "ANDROID_DIR=$ANDROID_DIR" >> "$GITHUB_ENV"
+
+
+      # ============================================================
+      # 5. WEB PROJESİ
+      # ============================================================
+      - name: Web bağımlılıklarını kur
         shell: bash
         run: |
           set -e
 
-          cd "$PROJECT_DIR"
+          echo "======================================"
+          echo "WEB BAĞIMLILIKLARI"
+          echo "======================================"
 
-          echo "Node:"
-          node --version
-
-          echo "NPM:"
-          npm --version
-
-          if [ -f package-lock.json ]; then
-            npm ci
-          else
-            echo "package-lock.json bulunamadı."
+          if [ -f "package.json" ]; then
             npm install
+          elif [ -f "extracted/dinlefix/package.json" ]; then
+            cd extracted/dinlefix
+            npm install
+          else
+            echo "package.json bulunamadı."
+            exit 1
           fi
 
-      # ==========================================
+
+      # ============================================================
       # 6. WEB BUILD
-      # ==========================================
+      # ============================================================
       - name: Web uygulamasını derle
         shell: bash
         run: |
           set -e
 
-          cd "$PROJECT_DIR"
-
           echo "======================================"
           echo "WEB BUILD"
           echo "======================================"
 
-          npm run build
+          if [ -f "package.json" ]; then
+            npm run build
+            WEB_DIST="dist"
+          elif [ -f "extracted/dinlefix/package.json" ]; then
+            cd extracted/dinlefix
+            npm run build
+            WEB_DIST="dist"
+          else
+            echo "Web projesi bulunamadı."
+            exit 1
+          fi
 
           echo "Web build başarılı."
 
-      # ==========================================
-      # 7. GRADLE WRAPPER
-      # ==========================================
-      - name: Gradle wrapper hazırla
+
+      # ============================================================
+      # 7. WEB DOSYALARINI ANDROID ASSETS'E KOPYALA
+      # ============================================================
+      - name: Web dosyalarını Android'e aktar
         shell: bash
         run: |
           set -e
-
-          cd "$PROJECT_DIR/android"
-
-          if [ ! -f gradlew ]; then
-            echo "gradlew bulunamadı."
-            gradle wrapper --gradle-version 8.9
-          fi
-
-          chmod +x gradlew
-
-      # ==========================================
-      # 8. KOTLIN ÇAKIŞMASINI DÜZELT
-      # ==========================================
-      - name: Kotlin bağımlılıklarını düzelt
-        shell: bash
-        run: |
-          set -e
-
-          cd "$PROJECT_DIR/android"
 
           echo "======================================"
-          echo "KOTLIN BAĞIMLILIKLARI DÜZELTİLİYOR"
+          echo "ANDROID ASSETS"
+          echo "======================================"
+
+          if [ -d "dist" ]; then
+            WEB_DIST="dist"
+          else
+            WEB_DIST="extracted/dinlefix/dist"
+          fi
+
+          ASSETS_DIR="$ANDROID_DIR/app/src/main/assets"
+
+          echo "Web:"
+          echo "$WEB_DIST"
+
+          echo "Android assets:"
+          echo "$ASSETS_DIR"
+
+          mkdir -p "$ASSETS_DIR"
+
+          rm -rf "$ASSETS_DIR"/*
+
+          cp -r "$WEB_DIST"/* "$ASSETS_DIR"/
+
+          echo ""
+          echo "Assets aktarımı tamamlandı."
+
+          find "$ASSETS_DIR" -maxdepth 2 -type f | head -50
+
+
+      # ============================================================
+      # 8. GRADLE WRAPPER YOKSA OLUŞTUR
+      # ============================================================
+      - name: Gradle Wrapper hazırla
+        shell: bash
+        working-directory: ${{ env.ANDROID_DIR }}
+        run: |
+          set -e
+
+          echo "======================================"
+          echo "GRADLE WRAPPER"
+          echo "======================================"
+
+          if [ -f "./gradlew" ]; then
+            echo "gradlew zaten mevcut."
+          else
+            echo "gradlew bulunamadı."
+            echo "Gradle Wrapper oluşturuluyor..."
+
+            gradle wrapper --gradle-version 8.9
+
+            echo "Gradle Wrapper oluşturuldu."
+          fi
+
+          chmod +x ./gradlew
+
+          ./gradlew --version
+
+
+      # ============================================================
+      # 9. KOTLIN SÜRÜM ÇAKIŞMASINI ÖNLE
+      # ============================================================
+      - name: Kotlin bağımlılıklarını düzelt
+        shell: bash
+        working-directory: ${{ env.ANDROID_DIR }}
+        run: |
+          set -e
+
+          echo "======================================"
+          echo "KOTLIN BAĞIMLILIK DÜZELTMESİ"
           echo "======================================"
 
           cat > kotlin-fix.gradle <<'EOF'
@@ -154,82 +235,98 @@ jobs:
                   resolutionStrategy.eachDependency { details ->
                       if (details.requested.group == "org.jetbrains.kotlin") {
                           details.useVersion("1.8.22")
-                          details.because("Kotlin bağımlılıkları tek sürümde birleştiriliyor")
+                          details.because("Dinle AI Kotlin bağımlılıklarını aynı sürümde tut")
                       }
                   }
-
-                  exclude group: "org.jetbrains.kotlin", module: "kotlin-stdlib-jdk7"
-                  exclude group: "org.jetbrains.kotlin", module: "kotlin-stdlib-jdk8"
               }
           }
           EOF
 
-          echo "Kotlin fix hazırlandı."
+          echo "Kotlin çözümleme kuralı oluşturuldu."
 
-      # ==========================================
-      # 9. APK DERLE
-      # ==========================================
-      - name: Android APK Derle
+
+      # ============================================================
+      # 10. TEMİZLE
+      # ============================================================
+      - name: Gradle temizle
         shell: bash
+        working-directory: ${{ env.ANDROID_DIR }}
         run: |
           set -e
 
-          cd "$PROJECT_DIR/android"
+          echo "======================================"
+          echo "GRADLE CLEAN"
+          echo "======================================"
+
+          ./gradlew clean \
+            --init-script kotlin-fix.gradle \
+            --no-daemon
+
+
+      # ============================================================
+      # 11. APK DERLE
+      # ============================================================
+      - name: APK oluştur
+        shell: bash
+        working-directory: ${{ env.ANDROID_DIR }}
+        run: |
+          set -e
 
           echo "======================================"
           echo "DINLE AI APK DERLEME"
           echo "======================================"
 
-          ./gradlew clean
+          echo "Android klasörü:"
+          pwd
+
+          echo ""
+          echo "Gradle:"
+          ./gradlew --version
+
+          echo ""
+          echo "APK derleniyor..."
 
           ./gradlew assembleDebug \
+            --init-script kotlin-fix.gradle \
             --no-daemon \
-            --stacktrace \
-            --init-script kotlin-fix.gradle
+            --stacktrace
 
-      # ==========================================
-      # 10. APK KONTROL
-      # ==========================================
+          echo ""
+          echo "======================================"
+          echo "APK BAŞARIYLA OLUŞTURULDU"
+          echo "======================================"
+
+          find app/build/outputs/apk -type f -name "*.apk" -print
+
+
+      # ============================================================
+      # 12. APK'YI ARTIFACT OLARAK YÜKLE
+      # ============================================================
+      - name: APK yükle
+        uses: actions/upload-artifact@v4
+        with:
+          name: DinleAI-APK
+          path: |
+            ${{ env.ANDROID_DIR }}/app/build/outputs/apk/debug/*.apk
+          if-no-files-found: error
+
+
+      # ============================================================
+      # 13. APK KONTROL
+      # ============================================================
       - name: APK kontrol
         shell: bash
         run: |
           set -e
 
-          cd "$PROJECT_DIR/android"
-
           echo "======================================"
-          echo "APK DOSYALARI"
+          echo "APK DOSYASI"
           echo "======================================"
 
-          find . -type f -name "*.apk" -print
+          find "$ANDROID_DIR/app/build/outputs/apk" \
+            -type f \
+            -name "*.apk" \
+            -exec ls -lh {} \;
 
-          APK=$(find . -type f -name "*.apk" | head -1)
-
-          if [ -z "$APK" ]; then
-            echo "HATA: APK oluşturulamadı."
-            exit 1
-          fi
-
-          echo "APK bulundu:"
-          echo "$APK"
-
-      # ==========================================
-      # 11. APK YÜKLE
-      # ==========================================
-      - name: APK yükle
-        uses: actions/upload-artifact@v4
-        with:
-          name: DinleAI-Debug-APK
-          path: |
-            ${{ env.PROJECT_DIR }}/android/app/build/outputs/apk/debug/*.apk
-          if-no-files-found: error
-
-      # ==========================================
-      # 12. BAŞARILI
-      # ==========================================
-      - name: Başarılı
-        shell: bash
-        run: |
-          echo "======================================"
-          echo "DINLE AI APK BAŞARIYLA OLUŞTURULDU"
-          echo "======================================"
+          echo ""
+          echo "APK oluşturma işlemi tamamlandı."
