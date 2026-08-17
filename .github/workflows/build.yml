@@ -28,7 +28,9 @@ jobs:
 
       - name: Ortam Degiskenlerini (.env) Olustur
         run: |
-          cd dinlefix
+          TARGET_DIR=$(find . -maxdepth 2 -type d -name "dinlefix" | head -n 1)
+          if [ -z "$TARGET_DIR" ]; then TARGET_DIR="."; fi
+          cd "$TARGET_DIR"
           cat << EOF > .env
           LIVEAVATAR_API_KEY=${{ secrets.LIVEAVATAR_API_KEY }}
           LIVEAVATAR_AVATAR_ID=${{ secrets.LIVEAVATAR_AVATAR_ID }}
@@ -37,17 +39,23 @@ jobs:
 
       - name: Bagimliliklari Yukle
         run: |
-          cd dinlefix
+          TARGET_DIR=$(find . -maxdepth 2 -type d -name "dinlefix" | head -n 1)
+          if [ -z "$TARGET_DIR" ]; then TARGET_DIR="."; fi
+          cd "$TARGET_DIR"
           npm install --legacy-peer-deps
 
       - name: Web Uygulamasini Derle
         run: |
-          cd dinlefix
+          TARGET_DIR=$(find . -maxdepth 2 -type d -name "dinlefix" | head -n 1)
+          if [ -z "$TARGET_DIR" ]; then TARGET_DIR="."; fi
+          cd "$TARGET_DIR"
           npm run build
 
       - name: Asset Senkronizasyonu ve Yol Duzeltme
         run: |
-          cd dinlefix
+          TARGET_DIR=$(find . -maxdepth 2 -type d -name "dinlefix" | head -n 1)
+          if [ -z "$TARGET_DIR" ]; then TARGET_DIR="."; fi
+          cd "$TARGET_DIR"
           node scripts/sync-android-assets.mjs || true
 
       - name: Java Kur
@@ -58,16 +66,21 @@ jobs:
 
       - name: Gradle Onbellek Hazirla ve APK Derle
         run: |
-          cd dinlefix/android
-          chmod +x gradlew
-          ./gradlew assembleDebug --stacktrace
-        env:
-          JAVA_HOME: ${{ env.JAVA_HOME_17_X64 }}
+          GRADLEW_PATH=$(find . -name "gradlew" | head -n 1)
+          if [ -n "$GRADLEW_PATH" ]; then
+            ANDROID_DIR=$(dirname "$GRADLEW_PATH")
+            cd "$ANDROID_DIR"
+            chmod +x gradlew
+            ./gradlew assembleDebug --stacktrace
+          else
+            echo "gradlew bulunamadi!"
+            exit 1
+          fi
 
       - name: APK Dosyasini Yukle
         uses: actions/upload-artifact@v4
         with:
           name: app-debug
-          path: dinlefix/android/app/build/outputs/apk/debug/app-debug.apk
+          path: '**/outputs/apk/debug/app-debug.apk'
           overwrite: true
           
