@@ -17,7 +17,7 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
-      - name: Depoyu indir
+      - name: Depoyu Indir
         uses: actions/checkout@v4
 
       - name: ZIP Arşivlerini Çıkar
@@ -29,36 +29,35 @@ jobs:
             unzip -o DinleAI-Android-Fixed.zip -d .
           fi
 
-      - name: Java 17 kurulumu
+      - name: Java 17 Kurulumu
         uses: actions/setup-java@v4
         with:
           distribution: 'temurin'
           java-version: '17'
 
-      - name: Node.js kurulumu
+      - name: Node.js Kurulumu
         uses: actions/setup-node@v4
         with:
-          node-version: '22'
+          node-version: '20'
 
-      - name: Proje klasörünü tespit et ve hazirla
+      - name: Proje Konfigürasyonu ve Web Derleme
         shell: bash
         run: |
-          set -e
+          set -x
+          
+          # Ana proje dizinini bul
           P_DIR=$(find . -maxdepth 2 -type d -name "dinlefix" | head -n 1)
           if [ -z "$P_DIR" ]; then P_DIR="."; fi
+          cd "$P_DIR"
           
-          echo "PROJECT_DIR=$P_DIR" >> $GITHUB_ENV
-          
-          # .env olustur
-          cat << EOF > "$P_DIR/.env"
-          LIVEAVATAR_API_KEY=${{ secrets.LIVEAVATAR_API_KEY }}
-          LIVEAVATAR_AVATAR_ID=${{ secrets.LIVEAVATAR_AVATAR_ID }}
-          LIVEAVATAR_CONTEXT_ID=${{ secrets.LIVEAVATAR_CONTEXT_ID }}
-          EOF
+          # Ortam Değişkenleri
+          echo "LIVEAVATAR_API_KEY=${{ secrets.LIVEAVATAR_API_KEY }}" > .env
+          echo "LIVEAVATAR_AVATAR_ID=${{ secrets.LIVEAVATAR_AVATAR_ID }}" >> .env
+          echo "LIVEAVATAR_CONTEXT_ID=${{ secrets.LIVEAVATAR_CONTEXT_ID }}" >> .env
 
-          # capacitor.config.json olustur
-          rm -f "$P_DIR/capacitor.config.ts"
-          cat << 'EOF' > "$P_DIR/capacitor.config.json"
+          # Capacitor JSON Konfigürasyon
+          rm -f capacitor.config.ts
+          cat << 'EOF' > capacitor.config.json
           {
             "appId": "com.dinle.ai",
             "appName": "Dinle AI",
@@ -66,45 +65,42 @@ jobs:
           }
           EOF
 
-      - name: Web Uygulamasını Derle
-        shell: bash
-        run: |
-          cd "$PROJECT_DIR"
+          # Bağımlılıklar ve Build
           npm install --legacy-peer-deps
           npm install -D typescript || true
           npm run build
 
-      - name: Capacitor Android Ekle ve Senkronize Et
-        shell: bash
-        run: |
-          cd "$PROJECT_DIR"
+          # Dist hazırlığı
           if [ -d "dist" ] && [ ! -d "www" ]; then cp -r dist www; fi
+          
+          # Android Platformunu Hazırla
           if [ ! -d "android" ]; then
             npx cap add android
           fi
           npx cap sync android
 
-      - name: Android Ortamını ve Gradle Yapılandırmasını Hazırla
+      - name: Android Projesini Derle (APK)
         shell: bash
         run: |
-          A_DIR=""
-          if [ -d "$PROJECT_DIR/android" ]; then
-            A_DIR="$PROJECT_DIR/android"
-          elif [ -d "android" ]; then
-            A_DIR="android"
+          set -x
+          
+          # Android dizinini bul
+          A_DIR=$(find . -maxdepth 3 -type d -name "android" | head -n 1)
+          if [ -z "$A_DIR" ]; then
+            echo "HATA: Android klasörü bulunamadı!"
+            exit 1
           fi
           
-          echo "ANDROID_DIR=$A_DIR" >> $GITHUB_ENV
           cd "$A_DIR"
 
-          # gradle.properties duzenle
+          # Gradle Properties
           cat << 'EOF' > gradle.properties
           android.useAndroidX=true
           android.enableJetifier=true
           org.gradle.jvmargs=-Xmx2048m -Dfile.encoding=UTF-8
           EOF
 
-          # kotlin-fix scripti
+          # Kotlin Yapılandırması
           cat << 'EOF' > kotlin-fix.gradle
           allprojects {
               configurations.configureEach {
@@ -117,17 +113,16 @@ jobs:
           }
           EOF
 
-          # Wrapper olustur
-          gradle wrapper --gradle-version 8.7 || true
+          # Gradlew İzinleri ve Derleme
           chmod +x gradlew || true
+          
+          if [ -f "./gradlew" ]; then
+            ./gradlew assembleDebug --init-script kotlin-fix.gradle --no-daemon -x test
+          else
+            gradle assembleDebug --init-script kotlin-fix.gradle --no-daemon -x test
+          fi
 
-      - name: APK Derle
-        shell: bash
-        run: |
-          cd "$ANDROID_DIR"
-          ./gradlew assembleDebug --init-script kotlin-fix.gradle --no-daemon -x test
-
-      - name: APK Yükle
+      - name: APK Dosyasını Yükle (Artifact)
         uses: actions/upload-artifact@v4
         with:
           name: DinleAI-APK
