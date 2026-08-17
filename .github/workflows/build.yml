@@ -5,29 +5,28 @@ jobs:
   build:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v3
+      - uses: actions/checkout@v4
 
-      - name: ZIP Dosyasını Çıkar
+      - name: ZIP Cikar
         run: |
-          if [ -f "DinleAI-Android-FullProject.zip" ]; then
-            unzip -o DinleAI-Android-FullProject.zip -d .
-          fi
+          sudo apt-get update && sudo apt-get install -y unzip
+          unzip -o DinleAI-Android-FullProject.zip -d .
 
-      - uses: actions/setup-node@v3
+      - uses: actions/setup-node@v4
         with:
           node-version: 18
 
-      - name: Bağımlılıkları Yükle
+      - name: Bagimliliklari Yukle
         run: npm install
 
-      - name: Web Projesini Derle
+      - name: Web Derle
         run: npm run build
 
       - name: Capacitor Sync
         run: npx cap sync android
 
-      - name: Java Kurulumu
-        uses: actions/setup-java@v3
+      - name: Java Kur
+        uses: actions/setup-java@v4
         with:
           distribution: 'zulu'
           java-version: '17'
@@ -38,8 +37,8 @@ jobs:
           chmod +x gradlew
           ./gradlew assembleDebug
 
-      - name: APK Dosyasını Yükle
-        uses: actions/upload-artifact@v3
+      - name: APK Yukle
+        uses: actions/upload-artifact@v4
         with:
           name: app-debug
           path: android/app/build/outputs/apk/debug/app-debug.apk
