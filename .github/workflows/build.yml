@@ -37,18 +37,30 @@ jobs:
           LIVEAVATAR_CONTEXT_ID=${{ secrets.LIVEAVATAR_CONTEXT_ID }}
           EOF
 
-      - name: Bagimliliklari Yukle
+      - name: Bagimliliklari Yukle ve TypeScript Düzeltmesi
         run: |
           TARGET_DIR=$(find . -maxdepth 2 -type d -name "dinlefix" | head -n 1)
           if [ -z "$TARGET_DIR" ]; then TARGET_DIR="."; fi
           cd "$TARGET_DIR"
           npm install --legacy-peer-deps
+          npm install -D typescript || true
 
       - name: Web Uygulamasini Derle
         run: |
           TARGET_DIR=$(find . -maxdepth 2 -type d -name "dinlefix" | head -n 1)
           if [ -z "$TARGET_DIR" ]; then TARGET_DIR="."; fi
           cd "$TARGET_DIR"
+          
+          # TS config takılmasını engellemek için JSON konfigürasyon garantisi
+          rm -f capacitor.config.ts
+          cat << 'EOF' > capacitor.config.json
+          {
+            "appId": "com.dinle.ai",
+            "appName": "Dinle AI",
+            "webDir": "dist"
+          }
+          EOF
+          
           npm run build
 
       - name: Java Kur
@@ -63,14 +75,16 @@ jobs:
           if [ -z "$TARGET_DIR" ]; then TARGET_DIR="."; fi
           cd "$TARGET_DIR"
 
-          # Android platformu yoksa ekle ve senkronize et
+          # Dist/Build klasörünü eşitle
+          if [ -d "dist" ] && [ ! -d "www" ]; then cp -r dist www; fi
+
           if [ ! -d "android" ]; then
-            npx cap add android || true
+            npx cap add android
           fi
-          npx cap sync android || true
+          npx cap sync android
 
           cd android
-          chmod +x gradlew || true
+          chmod +x gradlew
           ./gradlew assembleDebug --stacktrace
 
       - name: APK Dosyasini Yukle
