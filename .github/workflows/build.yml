@@ -11,10 +11,11 @@ jobs:
       - name: ZIP Cikar
         run: |
           sudo apt-get update && sudo apt-get install -y unzip
-          unzip -o DinleAI-Android-FullProject.zip -d .
+          unzip -o DinleAI-Android-Fixed.zip -d .
 
       - name: Vite ve Capacitor Ayarlarini Duzelt
         run: |
+          cd dinlefix
           # Vite goreceli yol (base: './') ayari ekleme
           node -e '
             const fs = require("fs");
@@ -43,13 +44,18 @@ jobs:
           node-version: 20
 
       - name: Bagimliliklari Yukle
-        run: npm install --legacy-peer-deps
+        run: |
+          cd dinlefix
+          npm install --legacy-peer-deps
 
       - name: Web Derle
-        run: npm run build
+        run: |
+          cd dinlefix
+          npm run build
 
       - name: Derleme Klasorunu Yonlendir ve Yollari Duzelt
         run: |
+          cd dinlefix
           mkdir -p www
           if [ -d "dist" ]; then cp -r dist/* www/; fi
           if [ -d "build" ]; then cp -r build/* www/; fi
@@ -59,7 +65,9 @@ jobs:
           sed -i "s/='\/assets/='.\/assets/g" www/index.html || true
 
       - name: Capacitor Sync
-        run: npx cap sync android
+        run: |
+          cd dinlefix
+          npx cap sync android
 
       - name: Java Kur
         uses: actions/setup-java@v4
@@ -69,13 +77,13 @@ jobs:
 
       - name: APK Derle
         run: |
-          cd android
+          cd dinlefix/android
           gradle assembleDebug
 
       - name: APK Yukle
         uses: actions/upload-artifact@v4
         with:
           name: app-debug
-          path: android/app/build/outputs/apk/debug/app-debug.apk
+          path: dinlefix/android/app/build/outputs/apk/debug/app-debug.apk
           overwrite: true
           
