@@ -2,7 +2,10 @@ name: Build Android APK
 
 on:
   push:
-    branches: [ "main", "ana", "master" ]
+    branches:
+      - main
+      - ana
+      - master
   workflow_dispatch:
 
 jobs:
@@ -14,96 +17,144 @@ jobs:
         uses: actions/checkout@v4
 
       - name: ZIP Cikar
+        shell: bash
         run: |
+          set -e
+
           if [ -f "DinleAI-NewLogo-VIP.zip" ]; then
-            unzip -o DinleAI-NewLogo-VIP.zip -d .
+            echo "DinleAI-NewLogo-VIP.zip bulundu"
+            unzip -o "DinleAI-NewLogo-VIP.zip" -d .
           elif [ -f "DinleAI-Android-Fixed.zip" ]; then
-            unzip -o DinleAI-Android-Fixed.zip -d .
+            echo "DinleAI-Android-Fixed.zip bulundu"
+            unzip -o "DinleAI-Android-Fixed.zip" -d .
           fi
+
+      - name: Proje Klasorunu Bul
+        shell: bash
+        run: |
+          TARGET_DIR=$(find . -maxdepth 3 -type f -name "package.json" \
+            -not -path "./node_modules/*" \
+            -exec dirname {} \; | head -n 1)
+
+          if [ -z "$TARGET_DIR" ]; then
+            echo "package.json bulunamadi!"
+            exit 1
+          fi
+
+          echo "TARGET_DIR=$TARGET_DIR" >> "$GITHUB_ENV"
+          echo "Proje klasoru: $TARGET_DIR"
 
       - name: Node.js Kur
         uses: actions/setup-node@v4
         with:
           node-version: 20
+          cache: npm
+          cache-dependency-path: ${{ env.TARGET_DIR }}/package-lock.json
 
-      - name: Ortam Degiskenlerini (.env) Olustur
+      - name: Java 17 Kur
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - name: Node Bagimliliklarini Yukle
+        working-directory: ${{ env.TARGET_DIR }}
         run: |
-          TARGET_DIR=$(find . -maxdepth 2 -type d -name "dinlefix" | head -n 1)
-          if [ -z "$TARGET_DIR" ]; then TARGET_DIR="."; fi
-          cd "$TARGET_DIR"
-          cat << EOF > .env
+          set -e
+
+          if [ -f package-lock.json ]; then
+            npm ci --legacy-peer-deps
+          else
+            npm install --legacy-peer-deps
+          fi
+
+      - name: Ortam Degiskenlerini Olustur
+        working-directory: ${{ env.TARGET_DIR }}
+        run: |
+          cat > .env << EOF
           LIVEAVATAR_API_KEY=${{ secrets.LIVEAVATAR_API_KEY }}
           LIVEAVATAR_AVATAR_ID=${{ secrets.LIVEAVATAR_AVATAR_ID }}
           LIVEAVATAR_CONTEXT_ID=${{ secrets.LIVEAVATAR_CONTEXT_ID }}
           EOF
 
-      - name: Bagimliliklari Yukle
+      - name: Capacitor Config Olustur
+        working-directory: ${{ env.TARGET_DIR }}
         run: |
-          TARGET_DIR=$(find . -maxdepth 2 -type d -name "dinlefix" | head -n 1)
-          if [ -z "$TARGET_DIR" ]; then TARGET_DIR="."; fi
-          cd "$TARGET_DIR"
-          npm install --legacy-peer-deps
-          npm install -D typescript || true
-
-      - name: Web Uygulamasini Derle
-        run: |
-          TARGET_DIR=$(find . -maxdepth 2 -type d -name "dinlefix" | head -n 1)
-          if [ -z "$TARGET_DIR" ]; then TARGET_DIR="."; fi
-          cd "$TARGET_DIR"
-          
           rm -f capacitor.config.ts
-          cat << 'EOF' > capacitor.config.json
+
+          cat > capacitor.config.json << 'EOF'
           {
             "appId": "com.dinle.ai",
             "appName": "Dinle AI",
             "webDir": "dist"
           }
           EOF
-          
+
+      - name: Web Uygulamasini Derle
+        working-directory: ${{ env.TARGET_DIR }}
+        run: |
+          set -e
           npm run build
 
-      - name: Java 21 Kur (En Guncel AGP Uyumlu)
-        uses: actions/setup-java@v4
-        with:
-          distribution: 'zulu'
-          java-version: '21'
-
-      - name: Gradle Sistem Kurulumu
-        uses: gradle/actions/setup-gradle@v3
-
-      - name: Android Klasorunu Hazirla, Wrapper Olustur ve APK Derle
+      - name: Capacitor Android Hazirla
+        working-directory: ${{ env.TARGET_DIR }}
         run: |
-          TARGET_DIR=$(find . -maxdepth 2 -type d -name "dinlefix" | head -n 1)
-          if [ -z "$TARGET_DIR" ]; then TARGET_DIR="."; fi
-          cd "$TARGET_DIR"
-
-          if [ -d "dist" ] && [ ! -d "www" ]; then cp -r dist www; fi
+          set -e
 
           if [ ! -d "android" ]; then
+            echo "Android klasoru yok, Capacitor Android ekleniyor..."
             npx cap add android
+          else
+            echo "Android klasoru zaten mevcut."
           fi
+
           npx cap sync android
 
-          cd android
-          
-          # Gradle konfigürasyonunu ayarla
-          cat << 'EOF' > gradle.properties
-          android.useAndroidX=true
-          android.enableJetifier=true
-          org.gradle.jvmargs=-Xmx2048m -Dfile.encoding=UTF-8
-          EOF
+      - name: Gradle Kurulumu
+        uses: gradle/actions/setup-gradle@v4
 
-          # Eksik gradlew dosyasini doğrudan üret
-          gradle wrapper
-          chmod +x gradlew
-          
-          # Derlemeyi başlat
-          ./gradlew assembleDebug -x test --warning-mode none
+      - name: Gradle Wrapper Kontrolu
+        working-directory: ${{ env.TARGET_DIR }}/android
+        shell: bash
+        run: |
+          set -e
+
+          if [ ! -f "./gradlew" ]; then
+            echo "gradlew bulunamadi."
+            echo "Gradle wrapper olusturuluyor..."
+
+            gradle wrapper --gradle-version 8.7
+
+            chmod +x gradlew
+          else
+            echo "Mevcut gradlew kullanilacak."
+            chmod +x gradlew
+          fi
+
+          ./gradlew --version
+
+      - name: Android APK Derle
+        working-directory: ${{ env.TARGET_DIR }}/android
+        shell: bash
+        run: |
+          set -e
+
+          ./gradlew assembleDebug \
+            --no-daemon \
+            --stacktrace \
+            --warning-mode all
+
+      - name: APK Dosyasini Bul
+        shell: bash
+        run: |
+          echo "APK dosyalari:"
+          find . -type f -name "*.apk" -print
 
       - name: APK Dosyasini Yukle
         uses: actions/upload-artifact@v4
         with:
-          name: app-debug
-          path: '**/outputs/apk/debug/app-debug.apk'
+          name: DinleAI-APK
+          path: |
+            ${{ env.TARGET_DIR }}/android/app/build/outputs/apk/debug/*.apk
+          if-no-files-found: error
           overwrite: true
-          
