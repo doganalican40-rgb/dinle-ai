@@ -21,40 +21,95 @@ jobs:
     steps:
 
       # ==========================================
-      # 1. REPO
+      # 1. REPOYU CEK
       # ==========================================
       - name: Checkout
         uses: actions/checkout@v4
 
 
       # ==========================================
-      # 2. PROJE KLASORUNU BUL
+      # 2. ZIP DOSYASINI BUL VE CIKAR
+      # ==========================================
+      - name: ZIP dosyasini cikar
+        shell: bash
+        run: |
+          set -e
+
+          echo "======================================"
+          echo "REPO ICERIGI"
+          echo "======================================"
+
+          ls -lah
+
+          ZIP_FILE=""
+
+          if [ -f "DinleAI-Android-Fixed-APK-Ready.zip" ]; then
+            ZIP_FILE="DinleAI-Android-Fixed-APK-Ready.zip"
+
+          elif [ -f "DinleAI-Android-Fixed.zip" ]; then
+            ZIP_FILE="DinleAI-Android-Fixed.zip"
+
+          elif [ -f "DinleAI-NewLogo-VIP.zip" ]; then
+            ZIP_FILE="DinleAI-NewLogo-VIP.zip"
+
+          else
+            ZIP_FILE=$(find . -maxdepth 2 -type f -name "*.zip" | head -n 1)
+          fi
+
+          if [ -z "$ZIP_FILE" ]; then
+            echo "HATA: ZIP dosyasi bulunamadi!"
+            exit 1
+          fi
+
+          echo "Bulunan ZIP: $ZIP_FILE"
+
+          mkdir -p extracted
+
+          unzip -o "$ZIP_FILE" -d extracted
+
+          echo "======================================"
+          echo "ZIP CIKARILDI"
+          echo "======================================"
+
+          find extracted -maxdepth 3 -type f | head -100
+
+
+      # ==========================================
+      # 3. PROJE KLASORUNU BUL
       # ==========================================
       - name: Proje klasorunu bul
         shell: bash
         run: |
           set -e
 
-          if [ -f "package.json" ]; then
-            echo "PROJECT_DIR=." >> "$GITHUB_ENV"
+          echo "package.json araniyor..."
 
-          elif [ -f "dinlefix/package.json" ]; then
-            echo "PROJECT_DIR=dinlefix" >> "$GITHUB_ENV"
+          PROJECT_DIR=$(find extracted \
+            -type f \
+            -name "package.json" \
+            -not -path "*/node_modules/*" \
+            -exec dirname {} \; | head -n 1)
 
-          else
-            echo "HATA: package.json bulunamadi."
+          if [ -z "$PROJECT_DIR" ]; then
+            echo "HATA: ZIP icinde package.json bulunamadi!"
 
-            find . \
-              -maxdepth 4 \
-              -name package.json \
-              -print
+            echo "ZIP icerigi:"
+            find extracted -maxdepth 5 -type f | head -200
 
             exit 1
           fi
 
+          echo "======================================"
+          echo "PROJE BULUNDU"
+          echo "======================================"
+
+          echo "PROJECT_DIR=$PROJECT_DIR"
+
+          echo "PROJECT_DIR=$PROJECT_DIR" >> "$GITHUB_ENV"
+
 
       # ==========================================
-      # 3. JAVA 17
+      # 4. JAVA 17
       # ==========================================
       - name: Setup Java 17
         uses: actions/setup-java@v4
@@ -64,7 +119,7 @@ jobs:
 
 
       # ==========================================
-      # 4. NODE 20
+      # 5. NODE 20
       # ==========================================
       - name: Setup Node 20
         uses: actions/setup-node@v4
@@ -73,7 +128,7 @@ jobs:
 
 
       # ==========================================
-      # 5. GRADLE 8.9
+      # 6. GRADLE 8.9
       # ==========================================
       - name: Setup Gradle 8.9
         uses: gradle/actions/setup-gradle@v4
@@ -82,7 +137,7 @@ jobs:
 
 
       # ==========================================
-      # 6. NODE BAGIMLILIKLARI
+      # 7. NODE BAGIMLILIKLARI
       # ==========================================
       - name: Install dependencies
         working-directory: ${{ env.PROJECT_DIR }}
@@ -115,54 +170,88 @@ jobs:
 
 
       # ==========================================
-      # 7. WEB UYGULAMASINI DERLE
+      # 8. WEB UYGULAMASINI DERLE
       # ==========================================
       - name: Build web app
         working-directory: ${{ env.PROJECT_DIR }}
-        env:
-          VITE_API_URL: ${{ vars.VITE_API_URL }}
-          VITE_BACKEND_BASE_URL: ${{ vars.VITE_BACKEND_BASE_URL }}
         shell: bash
         run: |
           set -e
 
-          echo "Web uygulamasi derleniyor..."
+          echo "======================================"
+          echo "WEB BUILD"
+          echo "======================================"
 
           npm run build
 
-          echo "Build tamamlandi."
-
           if [ ! -d "dist" ]; then
-            echo "HATA: dist klasoru olusmadi."
+            echo "HATA: dist klasoru olusmadi!"
             exit 1
           fi
 
+          echo "Web build basarili."
+
 
       # ==========================================
-      # 8. WEB DOSYALARINI ANDROID'E AKTAR
+      # 9. ANDROID ASSETS
       # ==========================================
-      - name: Sync web assets into Android
+      - name: Android web assets hazirla
         working-directory: ${{ env.PROJECT_DIR }}
         shell: bash
         run: |
           set -e
 
-          echo "Android assets guncelleniyor..."
+          if [ -f "scripts/sync-android-assets.mjs" ]; then
 
-          node scripts/sync-android-assets.mjs
+            echo "Android asset scripti bulundu."
 
-          if [ ! -f "android/app/src/main/assets/public/index.html" ]; then
-            echo "HATA: Android web assets bulunamadi."
-            exit 1
+            node scripts/sync-android-assets.mjs
+
+          else
+
+            echo "sync scripti bulunamadi."
+
+            if [ -d "android/app/src/main/assets/public" ]; then
+
+              rm -rf android/app/src/main/assets/public
+
+            fi
+
+            mkdir -p android/app/src/main/assets/public
+
+            cp -r dist/. android/app/src/main/assets/public/
+
           fi
 
           echo "Android web assets hazir."
 
 
       # ==========================================
-      # 9. GRADLE WRAPPER
+      # 10. GRADLE PROPERTIES
       # ==========================================
-      - name: Prepare Gradle wrapper
+      - name: Gradle ayarlarini yapilandir
+        working-directory: ${{ env.PROJECT_DIR }}/android
+        shell: bash
+        run: |
+          set -e
+
+          cat > gradle.properties << 'EOF'
+          android.useAndroidX=true
+          android.enableJetifier=true
+          org.gradle.jvmargs=-Xmx3072m -Dfile.encoding=UTF-8
+          org.gradle.daemon=false
+          org.gradle.parallel=false
+          org.gradle.caching=false
+          EOF
+
+          echo "Gradle ayarlari:"
+          cat gradle.properties
+
+
+      # ==========================================
+      # 11. GRADLE WRAPPER
+      # ==========================================
+      - name: Gradle wrapper kontrolu
         working-directory: ${{ env.PROJECT_DIR }}/android
         shell: bash
         run: |
@@ -171,34 +260,29 @@ jobs:
           if [ ! -f "./gradlew" ]; then
 
             echo "gradlew bulunamadi."
-            echo "Gradle 8.9 wrapper olusturuluyor..."
 
             gradle wrapper \
               --gradle-version 8.9
-
-          else
-
-            echo "Mevcut gradlew kullaniliyor."
 
           fi
 
           chmod +x gradlew
 
-          echo "Gradle versiyonu:"
+          echo "Gradle:"
           ./gradlew --version
 
 
       # ==========================================
-      # 10. ANDROID APK DERLE
+      # 12. ANDROID APK DERLE
       # ==========================================
-      - name: Build debug APK
+      - name: Android APK Derle
         working-directory: ${{ env.PROJECT_DIR }}/android
         shell: bash
         run: |
           set -e
 
           echo "======================================"
-          echo "DINLE AI ANDROID APK"
+          echo "DINLE AI APK DERLEME"
           echo "======================================"
 
           ./gradlew clean :app:assembleDebug \
@@ -207,15 +291,13 @@ jobs:
             --stacktrace \
             --warning-mode all
 
-          echo "======================================"
-          echo "APK DERLEME TAMAMLANDI"
-          echo "======================================"
+          echo "APK DERLEME TAMAMLANDI."
 
 
       # ==========================================
-      # 11. APK KONTROL
+      # 13. APK KONTROL
       # ==========================================
-      - name: Verify APK
+      - name: APK kontrol
         working-directory: ${{ env.PROJECT_DIR }}
         shell: bash
         run: |
@@ -228,17 +310,20 @@ jobs:
             exit 1
           fi
 
-          echo "APK BASARIYLA OLUSTU:"
+          echo "======================================"
+          echo "APK BASARILI"
+          echo "======================================"
+
           ls -lh "$APK"
 
 
       # ==========================================
-      # 12. APK'YI GITHUB'A YUKLE
+      # 14. APK YUKLE
       # ==========================================
-      - name: Upload APK
+      - name: APK yukle
         uses: actions/upload-artifact@v4
         with:
-          name: DinleAI-debug-apk
+          name: DinleAI-debug-APK
           path: ${{ env.PROJECT_DIR }}/android/app/build/outputs/apk/debug/app-debug.apk
           if-no-files-found: error
           overwrite: true
