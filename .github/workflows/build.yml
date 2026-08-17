@@ -68,7 +68,10 @@ jobs:
           distribution: 'zulu'
           java-version: '21'
 
-      - name: Android Klasorunu Hazirla ve Konfigure Et
+      - name: Gradle Sistem Kurulumu
+        uses: gradle/actions/setup-gradle@v3
+
+      - name: Android Klasorunu Hazirla, Wrapper Olustur ve APK Derle
         run: |
           TARGET_DIR=$(find . -maxdepth 2 -type d -name "dinlefix" | head -n 1)
           if [ -z "$TARGET_DIR" ]; then TARGET_DIR="."; fi
@@ -83,20 +86,18 @@ jobs:
 
           cd android
           
-          # Gradle ayarlarında sürüm çakışmasını es geçme kuralı ekle
+          # Gradle konfigürasyonunu ayarla
           cat << 'EOF' > gradle.properties
           android.useAndroidX=true
           android.enableJetifier=true
           org.gradle.jvmargs=-Xmx2048m -Dfile.encoding=UTF-8
           EOF
 
-          chmod +x gradlew || true
-
-      - name: APK Derle (Resolution Override)
-        run: |
-          TARGET_DIR=$(find . -maxdepth 2 -type d -name "dinlefix" | head -n 1)
-          if [ -z "$TARGET_DIR" ]; then TARGET_DIR="."; fi
-          cd "$TARGET_DIR/android"
+          # Eksik gradlew dosyasini doğrudan üret
+          gradle wrapper
+          chmod +x gradlew
+          
+          # Derlemeyi başlat
           ./gradlew assembleDebug -x test --warning-mode none
 
       - name: APK Dosyasini Yukle
