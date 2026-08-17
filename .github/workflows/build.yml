@@ -18,7 +18,7 @@ jobs:
 
     steps:
       - name: Depoyu indir
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
 
       - name: ZIP Arşivlerini Çıkar
         shell: bash
@@ -30,46 +30,46 @@ jobs:
           fi
 
       - name: Java 17 kurulumu
-        uses: actions/setup-java@v4
+        uses: actions/setup-java@v5
         with:
           distribution: 'temurin'
           java-version: '17'
 
       - name: Node.js kurulumu
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@v5
         with:
-          node-version: '20'
+          node-version: '22'
 
       - name: Proje klasörlerini bul
         shell: bash
         run: |
           set -e
-          PROJECT_DIR=$(find . -maxdepth 2 -type d -name "dinlefix" | head -n 1)
-          if [ -z "$PROJECT_DIR" ]; then PROJECT_DIR="."; fi
+          P_DIR=$(find . -maxdepth 2 -type d -name "dinlefix" | head -n 1)
+          if [ -z "$P_DIR" ]; then P_DIR="."; fi
           
-          ANDROID_DIR=""
-          if [ -d "$PROJECT_DIR/android" ]; then
-            ANDROID_DIR="$PROJECT_DIR/android"
+          A_DIR=""
+          if [ -d "$P_DIR/android" ]; then
+            A_DIR="$P_DIR/android"
           elif [ -d "android" ]; then
-            ANDROID_DIR="android"
+            A_DIR="android"
           else
             FOUND_SETTINGS=$(find . -type f -name "settings.gradle" -o -type f -name "settings.gradle.kts" | head -n 1 || true)
             if [ -n "$FOUND_SETTINGS" ]; then
-              ANDROID_DIR=$(dirname "$FOUND_SETTINGS")
+              A_DIR=$(dirname "$FOUND_SETTINGS")
             fi
           fi
 
-          if [ -z "$ANDROID_DIR" ]; then
-            ANDROID_DIR="$PROJECT_DIR/android"
+          if [ -z "$A_DIR" ]; then
+            A_DIR="$P_DIR/android"
           fi
 
-          echo "PROJECT_DIR=$PROJECT_DIR" >> "$GITHUB_ENV"
-          echo "ANDROID_DIR=$ANDROID_DIR" >> "$GITHUB_ENV"
+          echo "PROJECT_DIR=$P_DIR" >> $GITHUB_ENV
+          echo "ANDROID_DIR=$A_DIR" >> $GITHUB_ENV
 
       - name: Ortam Değişkenleri ve Konfigürasyon
         shell: bash
+        working-directory: ${{ env.PROJECT_DIR }}
         run: |
-          cd "$PROJECT_DIR"
           cat << EOF > .env
           LIVEAVATAR_API_KEY=${{ secrets.LIVEAVATAR_API_KEY }}
           LIVEAVATAR_AVATAR_ID=${{ secrets.LIVEAVATAR_AVATAR_ID }}
@@ -87,16 +87,16 @@ jobs:
 
       - name: Web Bağımlılıkları Kur ve Uygulamayı Derle
         shell: bash
+        working-directory: ${{ env.PROJECT_DIR }}
         run: |
-          cd "$PROJECT_DIR"
           npm install --legacy-peer-deps
           npm install -D typescript || true
           npm run build
 
       - name: Capacitor Android Senkronizasyonu
         shell: bash
+        working-directory: ${{ env.PROJECT_DIR }}
         run: |
-          cd "$PROJECT_DIR"
           if [ -d "dist" ] && [ ! -d "www" ]; then cp -r dist www; fi
           if [ ! -d "android" ]; then
             npx cap add android || true
@@ -107,7 +107,7 @@ jobs:
         shell: bash
         run: |
           sudo apt-get update && sudo apt-get install -y gradle || true
-          cd "$ANDROID_DIR"
+          cd "${{ env.ANDROID_DIR }}"
           gradle wrapper --gradle-version 8.7 || true
           chmod +x gradlew || true
 
@@ -131,8 +131,8 @@ jobs:
 
       - name: APK Derle
         shell: bash
+        working-directory: ${{ env.ANDROID_DIR }}
         run: |
-          cd "$ANDROID_DIR"
           if [ -f "./gradlew" ]; then
             ./gradlew assembleDebug --init-script kotlin-fix.gradle --no-daemon -x test
           else
@@ -145,3 +145,4 @@ jobs:
           name: DinleAI-APK
           path: '**/outputs/apk/debug/*.apk'
           if-no-files-found: error
+          
