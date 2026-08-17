@@ -68,12 +68,7 @@ jobs:
           distribution: 'zulu'
           java-version: '17'
 
-      - name: Gradle Kurulumu (Uyumlu Surum)
-        uses: gradle/actions/setup-gradle@v3
-        with:
-          gradle-version: '8.2.1'
-
-      - name: Android Klasorunu Hazirla ve APK Derle
+      - name: Android Klasorunu Hazirla ve Gradle 8.7 Ayarla
         run: |
           TARGET_DIR=$(find . -maxdepth 2 -type d -name "dinlefix" | head -n 1)
           if [ -z "$TARGET_DIR" ]; then TARGET_DIR="."; fi
@@ -87,8 +82,25 @@ jobs:
           npx cap sync android
 
           cd android
-          gradle wrapper --gradle-version 8.2.1
+          # Gradle Wrapper'ı tam olarak istenen 8.7 sürümüne güncelle
+          mkdir -p gradle/wrapper
+          cat << 'EOF' > gradle/wrapper/gradle-wrapper.properties
+          distributionBase=GRADLE_USER_HOME
+          distributionPath=wrapper/dists
+          distributionUrl=https\://services.gradle.org/distributions/gradle-8.7-bin.zip
+          zipStoreBase=GRADLE_USER_HOME
+          zipStorePath=wrapper/dists
+          EOF
+
+          # Sistem Gradle'ı ile wrapper scriptlerini oluştur
+          gradle wrapper --gradle-version 8.7
           chmod +x gradlew
+
+      - name: APK Derle
+        run: |
+          TARGET_DIR=$(find . -maxdepth 2 -type d -name "dinlefix" | head -n 1)
+          if [ -z "$TARGET_DIR" ]; then TARGET_DIR="."; fi
+          cd "$TARGET_DIR/android"
           ./gradlew assembleDebug
 
       - name: APK Dosyasini Yukle
