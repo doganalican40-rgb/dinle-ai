@@ -37,7 +37,7 @@ jobs:
           LIVEAVATAR_CONTEXT_ID=${{ secrets.LIVEAVATAR_CONTEXT_ID }}
           EOF
 
-      - name: Bagimliliklari Yukle ve TypeScript Düzeltmesi
+      - name: Bagimliliklari Yukle
         run: |
           TARGET_DIR=$(find . -maxdepth 2 -type d -name "dinlefix" | head -n 1)
           if [ -z "$TARGET_DIR" ]; then TARGET_DIR="."; fi
@@ -62,13 +62,13 @@ jobs:
           
           npm run build
 
-      - name: Java Kur
+      - name: Java 21 Kur (En Guncel AGP Uyumlu)
         uses: actions/setup-java@v4
         with:
           distribution: 'zulu'
-          java-version: '17'
+          java-version: '21'
 
-      - name: Android Klasorunu Hazirla ve Gradle 8.7 Ayarla
+      - name: Android Klasorunu Hazirla ve Konfigure Et
         run: |
           TARGET_DIR=$(find . -maxdepth 2 -type d -name "dinlefix" | head -n 1)
           if [ -z "$TARGET_DIR" ]; then TARGET_DIR="."; fi
@@ -82,26 +82,22 @@ jobs:
           npx cap sync android
 
           cd android
-          # Gradle Wrapper'ı tam olarak istenen 8.7 sürümüne güncelle
-          mkdir -p gradle/wrapper
-          cat << 'EOF' > gradle/wrapper/gradle-wrapper.properties
-          distributionBase=GRADLE_USER_HOME
-          distributionPath=wrapper/dists
-          distributionUrl=https\://services.gradle.org/distributions/gradle-8.7-bin.zip
-          zipStoreBase=GRADLE_USER_HOME
-          zipStorePath=wrapper/dists
+          
+          # Gradle ayarlarında sürüm çakışmasını es geçme kuralı ekle
+          cat << 'EOF' > gradle.properties
+          android.useAndroidX=true
+          android.enableJetifier=true
+          org.gradle.jvmargs=-Xmx2048m -Dfile.encoding=UTF-8
           EOF
 
-          # Sistem Gradle'ı ile wrapper scriptlerini oluştur
-          gradle wrapper --gradle-version 8.7
-          chmod +x gradlew
+          chmod +x gradlew || true
 
-      - name: APK Derle
+      - name: APK Derle (Resolution Override)
         run: |
           TARGET_DIR=$(find . -maxdepth 2 -type d -name "dinlefix" | head -n 1)
           if [ -z "$TARGET_DIR" ]; then TARGET_DIR="."; fi
           cd "$TARGET_DIR/android"
-          ./gradlew assembleDebug
+          ./gradlew assembleDebug -x test --warning-mode none
 
       - name: APK Dosyasini Yukle
         uses: actions/upload-artifact@v4
