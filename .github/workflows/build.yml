@@ -1,0 +1,64 @@
+name: Build Android APK
+on: [push]
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Repoyu Cek
+        uses: actions/checkout@v4
+
+      - name: ZIP Cikar
+        run: |
+          sudo apt-get update && sudo apt-get install -y unzip
+          unzip -o DinleAI-Android-FullProject.zip -d .
+
+      - name: Capacitor Config Duzelt
+        run: |
+          rm -f capacitor.config.ts
+          cat << 'EOF' > capacitor.config.json
+          {
+            "appId": "com.dinle.ai",
+            "appName": "Dinle AI",
+            "webDir": "www"
+          }
+          EOF
+
+      - name: Node.js Kur
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      - name: Bagimliliklari Yukle
+        run: npm install --legacy-peer-deps
+
+      - name: Web Derle
+        run: npm run build
+
+      - name: Derleme Klasorunu Yonlendir
+        run: |
+          mkdir -p www
+          cp -r dist/* www/ 2>/dev/null || true
+          cp -r build/* www/ 2>/dev/null || true
+          cp -r out/* www/ 2>/dev/null || true
+
+      - name: Capacitor Sync
+        run: npx cap sync android
+
+      - name: Java Kur
+        uses: actions/setup-java@v4
+        with:
+          distribution: 'zulu'
+          java-version: '17'
+
+      - name: APK Derle
+        run: |
+          cd android
+          gradle assembleDebug
+
+      - name: APK Yukle
+        uses: actions/upload-artifact@v4
+        with:
+          name: app-debug
+          path: android/app/build/outputs/apk/debug/app-debug.apk
+          overwrite: true
