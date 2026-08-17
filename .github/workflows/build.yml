@@ -47,8 +47,7 @@ jobs:
       - name: APK Derle
         run: |
           cd android
-          chmod +x gradlew
-          ./gradlew assembleDebug
+          gradle assembleDebug
 
       - name: APK Yukle
         uses: actions/upload-artifact@v4
