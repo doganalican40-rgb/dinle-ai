@@ -65,15 +65,20 @@ jobs:
           }
           EOF
 
-          # Bağımlılıklar ve Build
+          # Bağımlılıklar
           npm install --legacy-peer-deps
-          npm install -D typescript || true
+          
+          # GİZLİ HATAYI ÇÖZEN KISIM (Capacitor Kurulumu)
+          npm install -g @capacitor/cli@latest
+          npm install -D typescript @capacitor/core@latest || true
+          
+          # Build
           npm run build
 
           # Dist hazırlığı
           if [ -d "dist" ] && [ ! -d "www" ]; then cp -r dist www; fi
           
-          # Android Platformunu Hazırla
+          # Android Platformunu Hazırla ve Senkronize Et
           if [ ! -d "android" ]; then
             npx cap add android
           fi
