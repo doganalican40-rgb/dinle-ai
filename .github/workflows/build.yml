@@ -1,72 +1,54 @@
 name: Build Android APK
-on: [push]
+
+on:
+  push:
+    branches: [ "main", "ana", "master" ]
+  workflow_dispatch:
 
 jobs:
   build:
     runs-on: ubuntu-latest
+
     steps:
       - name: Repoyu Cek
         uses: actions/checkout@v4
 
       - name: ZIP Cikar
         run: |
-          unzip -o DinleAI-Android-Fixed.zip -d .
-
-      - name: Vite ve Capacitor Ayarlarini Duzelt
-        run: |
-          cd dinlefix
-          # Vite goreceli yol (base: './') ayari ekleme
-          node -e '
-            const fs = require("fs");
-            if (fs.existsSync("vite.config.js")) {
-              let content = fs.readFileSync("vite.config.js", "utf8");
-              if (!content.includes("base:")) {
-                content = content.replace("defineConfig({", "defineConfig({\n  base: \"./\",");
-                fs.writeFileSync("vite.config.js", content);
-              }
-            }
-          '
-
-          # Capacitor config hazirlama
-          rm -f capacitor.config.ts
-          cat << 'EOF' > capacitor.config.json
-          {
-            "appId": "com.dinle.ai",
-            "appName": "Dinle AI",
-            "webDir": "www"
-          }
-          EOF
+          if [ -f "DinleAI-NewLogo-VIP.zip" ]; then
+            unzip -o DinleAI-NewLogo-VIP.zip -d .
+          elif [ -f "DinleAI-Android-Fixed.zip" ]; then
+            unzip -o DinleAI-Android-Fixed.zip -d .
+          fi
 
       - name: Node.js Kur
         uses: actions/setup-node@v4
         with:
           node-version: 20
 
+      - name: Ortam Degiskenlerini (.env) Olustur
+        run: |
+          cd dinlefix
+          cat << EOF > .env
+          LIVEAVATAR_API_KEY=${{ secrets.LIVEAVATAR_API_KEY }}
+          LIVEAVATAR_AVATAR_ID=${{ secrets.LIVEAVATAR_AVATAR_ID }}
+          LIVEAVATAR_CONTEXT_ID=${{ secrets.LIVEAVATAR_CONTEXT_ID }}
+          EOF
+
       - name: Bagimliliklari Yukle
         run: |
           cd dinlefix
           npm install --legacy-peer-deps
 
-      - name: Web Derle
+      - name: Web Uygulamasini Derle
         run: |
           cd dinlefix
           npm run build
 
-      - name: Derleme Klasorunu Yonlendir ve Yollari Duzelt
+      - name: Asset Senkronizasyonu ve Yol Duzeltme
         run: |
           cd dinlefix
-          mkdir -p www
-          if [ -d "dist" ]; then cp -r dist/* www/; fi
-          if [ -d "build" ]; then cp -r build/* www/; fi
-          
-          # HTML icindeki /assets yollarini ./assets olarak duzelt
-          sed -i 's/="\/assets/=".\/assets/g' www/index.html || true
-          sed -i "s/='\/assets/='.\/assets/g" www/index.html || true
-
-      - name: Capacitor Sync
-        run: |
-          cd dinlefix
-          npx cap sync android
+          node scripts/sync-android-assets.mjs || true
 
       - name: Java Kur
         uses: actions/setup-java@v4
@@ -74,13 +56,14 @@ jobs:
           distribution: 'zulu'
           java-version: '17'
 
-      - name: APK Derle
+      - name: APK Derle ve Versiyonu Yükselt
         run: |
           cd dinlefix/android
+          sed -i 's/versionCode 1/versionCode 2/g' app/build.gradle || true
           chmod +x gradlew || true
           ./gradlew assembleDebug || gradle assembleDebug
 
-      - name: APK Yukle
+      - name: APK Dosyasini Yukle
         uses: actions/upload-artifact@v4
         with:
           name: app-debug
