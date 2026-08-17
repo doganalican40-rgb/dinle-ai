@@ -29,7 +29,10 @@ jobs:
         run: |
           set -e
 
-          echo "Dosyalar:"
+          echo "======================================"
+          echo "REPO DOSYALARI"
+          echo "======================================"
+
           ls -la
 
           if [ -f "DinleAI-NewLogo-VIP.zip" ]; then
@@ -41,7 +44,7 @@ jobs:
             unzip -o "DinleAI-Android-Fixed.zip" -d .
 
           else
-            echo "ZIP dosyasi bulunamadi."
+            echo "HATA: ZIP dosyasi bulunamadi!"
             exit 1
           fi
 
@@ -76,11 +79,10 @@ jobs:
 
 
       # =========================================================
-      # 4. NODE.JS
+      # 4. NODE.JS 20
       # =========================================================
-      # NOT:
-      # npm cache KULLANMIYORUZ.
-      # Onceki hatanin sebebi cache-dependency-path idi.
+      # NPM CACHE KULLANILMIYOR.
+      # Onceki cache dependency hatasini engelliyoruz.
       # =========================================================
       - name: Node.js Kur
         uses: actions/setup-node@v4
@@ -107,14 +109,25 @@ jobs:
         run: |
           set -e
 
+          echo "======================================"
+          echo "NODE KONTROL"
+          echo "======================================"
+
           echo "Node:"
           node --version
 
           echo "NPM:"
           npm --version
 
-          echo "package.json:"
+          echo "======================================"
+          echo "PACKAGE.JSON"
+          echo "======================================"
+
           cat package.json
+
+          echo "======================================"
+          echo "BAGIMLILIKLAR YUKLENIYOR"
+          echo "======================================"
 
           if [ -f "package-lock.json" ]; then
             echo "package-lock.json bulundu."
@@ -132,6 +145,8 @@ jobs:
         working-directory: ${{ env.TARGET_DIR }}
         shell: bash
         run: |
+          set -e
+
           cat > .env << EOF
           LIVEAVATAR_API_KEY=${{ secrets.LIVEAVATAR_API_KEY }}
           LIVEAVATAR_AVATAR_ID=${{ secrets.LIVEAVATAR_AVATAR_ID }}
@@ -148,6 +163,8 @@ jobs:
         working-directory: ${{ env.TARGET_DIR }}
         shell: bash
         run: |
+          set -e
+
           rm -f capacitor.config.ts
 
           cat > capacitor.config.json << 'EOF'
@@ -158,7 +175,10 @@ jobs:
           }
           EOF
 
-          echo "Capacitor config:"
+          echo "======================================"
+          echo "CAPACITOR CONFIG"
+          echo "======================================"
+
           cat capacitor.config.json
 
 
@@ -171,19 +191,24 @@ jobs:
         run: |
           set -e
 
-          echo "Web uygulamasi derleniyor..."
+          echo "======================================"
+          echo "WEB BUILD BASLIYOR"
+          echo "======================================"
 
           npm run build
 
-          echo "Build tamamlandi."
+          echo "Web build tamamlandi."
 
           if [ ! -d "dist" ]; then
             echo "HATA: dist klasoru olusmadi!"
             exit 1
           fi
 
-          echo "dist klasoru:"
-          find dist -maxdepth 2 -type f | head -50
+          echo "======================================"
+          echo "DIST DOSYALARI"
+          echo "======================================"
+
+          find dist -maxdepth 2 -type f | head -100
 
 
       # =========================================================
@@ -194,6 +219,10 @@ jobs:
         shell: bash
         run: |
           set -e
+
+          echo "======================================"
+          echo "CAPACITOR ANDROID"
+          echo "======================================"
 
           if [ ! -d "android" ]; then
             echo "Android klasoru yok."
@@ -219,7 +248,34 @@ jobs:
 
 
       # =========================================================
-      # 12. GRADLE WRAPPER KONTROL
+      # 12. GRADLE AYARLARINI YAPILANDIR
+      # =========================================================
+      - name: Gradle Ayarlarini Yapilandir
+        working-directory: ${{ env.TARGET_DIR }}/android
+        shell: bash
+        run: |
+          set -e
+
+          echo "Gradle ayarlari yapilandiriliyor..."
+
+          cat > gradle.properties << 'EOF'
+          android.useAndroidX=true
+          android.enableJetifier=true
+          org.gradle.jvmargs=-Xmx3072m -Dfile.encoding=UTF-8
+          org.gradle.daemon=false
+          org.gradle.parallel=false
+          org.gradle.caching=false
+          EOF
+
+          echo "======================================"
+          echo "GRADLE PROPERTIES"
+          echo "======================================"
+
+          cat gradle.properties
+
+
+      # =========================================================
+      # 13. GRADLE WRAPPER KONTROL
       # =========================================================
       - name: Gradle Wrapper Kontrolu
         working-directory: ${{ env.TARGET_DIR }}/android
@@ -227,7 +283,10 @@ jobs:
         run: |
           set -e
 
-          echo "Android klasoru:"
+          echo "======================================"
+          echo "ANDROID KLASORU"
+          echo "======================================"
+
           ls -la
 
           if [ ! -f "./gradlew" ]; then
@@ -246,12 +305,15 @@ jobs:
 
           chmod +x gradlew
 
-          echo "Gradle versiyonu:"
+          echo "======================================"
+          echo "GRADLE VERSIYONU"
+          echo "======================================"
+
           ./gradlew --version
 
 
       # =========================================================
-      # 13. ANDROID APK DERLE
+      # 14. ANDROID APK DERLE
       # =========================================================
       - name: Android APK Derle
         working-directory: ${{ env.TARGET_DIR }}/android
@@ -259,25 +321,62 @@ jobs:
         run: |
           set -e
 
-          echo "Android APK derlemesi basliyor..."
+          echo "======================================"
+          echo "ANDROID APK DERLEME BASLIYOR"
+          echo "======================================"
 
-          ./gradlew assembleDebug \
+          echo "Java:"
+          java -version
+
+          echo "Gradle:"
+          ./gradlew --version
+
+          echo "======================================"
+          echo "GRADLE CACHE TEMIZLENIYOR"
+          echo "======================================"
+
+          rm -rf "$HOME/.gradle/caches"
+
+          echo "Gradle cache temizlendi."
+
+          echo "======================================"
+          echo "APK DERLENIYOR"
+          echo "======================================"
+
+          ./gradlew clean assembleDebug \
             --no-daemon \
+            --no-parallel \
             --stacktrace \
+            --info \
             --warning-mode all
 
-          echo "APK derlemesi tamamlandi."
+          echo "======================================"
+          echo "APK DERLEME TAMAMLANDI"
+          echo "======================================"
 
 
       # =========================================================
-      # 14. APK BUL
+      # 15. APK DOSYASINI BUL
       # =========================================================
       - name: APK Dosyasini Bul
         shell: bash
         run: |
+          set -e
+
           echo "======================================"
           echo "APK DOSYALARI"
           echo "======================================"
+
+          APK_COUNT=$(find "${{ env.TARGET_DIR }}/android" \
+            -type f \
+            -name "*.apk" | wc -l)
+
+          echo "Bulunan APK sayisi: $APK_COUNT"
+
+          if [ "$APK_COUNT" -eq 0 ]; then
+            echo "HATA: APK bulunamadi!"
+            exit 1
+          fi
 
           find "${{ env.TARGET_DIR }}/android" \
             -type f \
@@ -288,7 +387,7 @@ jobs:
 
 
       # =========================================================
-      # 15. APK YUKLE
+      # 16. APK YUKLE
       # =========================================================
       - name: APK Dosyasini Yukle
         uses: actions/upload-artifact@v4
