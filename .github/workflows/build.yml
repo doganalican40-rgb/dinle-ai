@@ -51,7 +51,6 @@ jobs:
           if [ -z "$TARGET_DIR" ]; then TARGET_DIR="."; fi
           cd "$TARGET_DIR"
           
-          # TS config takılmasını engellemek için JSON konfigürasyon garantisi
           rm -f capacitor.config.ts
           cat << 'EOF' > capacitor.config.json
           {
@@ -69,13 +68,15 @@ jobs:
           distribution: 'zulu'
           java-version: '17'
 
+      - name: Gradle Kurulumu
+        uses: gradle/actions/setup-gradle@v3
+
       - name: Android Klasorunu Hazirla ve APK Derle
         run: |
           TARGET_DIR=$(find . -maxdepth 2 -type d -name "dinlefix" | head -n 1)
           if [ -z "$TARGET_DIR" ]; then TARGET_DIR="."; fi
           cd "$TARGET_DIR"
 
-          # Dist/Build klasörünü eşitle
           if [ -d "dist" ] && [ ! -d "www" ]; then cp -r dist www; fi
 
           if [ ! -d "android" ]; then
@@ -84,6 +85,8 @@ jobs:
           npx cap sync android
 
           cd android
+          # Eksik gradlew dosyasını doğrudan sistem Gradle'ı ile üretiyoruz
+          gradle wrapper
           chmod +x gradlew
           ./gradlew assembleDebug --stacktrace
 
