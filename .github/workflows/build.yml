@@ -17,58 +17,36 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
-      # ============================================================
-      # 1. PROJEYİ AL VE ZIP ÇIKAR
-      # ============================================================
       - name: Depoyu indir
         uses: actions/checkout@v4
 
-      - name: ZIP Arşivlerini Çıkar (Varsa)
+      - name: ZIP Arşivlerini Çıkar
         shell: bash
         run: |
           if [ -f "DinleAI-NewLogo-VIP.zip" ]; then
             unzip -o DinleAI-NewLogo-VIP.zip -d .
           elif [ -f "DinleAI-Android-Fixed.zip" ]; then
             unzip -o DinleAI-Android-Fixed.zip -d .
-          elif [ -f "*.zip" ]; then
-            unzip -o *.zip -d . || true
           fi
 
-      # ============================================================
-      # 2. JAVA 17
-      # ============================================================
       - name: Java 17 kurulumu
         uses: actions/setup-java@v4
         with:
           distribution: 'temurin'
           java-version: '17'
 
-      # ============================================================
-      # 3. NODE.JS
-      # ============================================================
       - name: Node.js kurulumu
         uses: actions/setup-node@v4
         with:
           node-version: '20'
 
-      # ============================================================
-      # 4. PROJE KLASÖRLERİNİ BUL
-      # ============================================================
       - name: Proje klasörlerini bul
         shell: bash
         run: |
           set -e
-
-          echo "======================================"
-          echo "PROJE KLASÖRLERİ TESPİT EDİLİYOR"
-          echo "======================================"
-
-          # Dinlefix veya Kök dizin kontrolü
           PROJECT_DIR=$(find . -maxdepth 2 -type d -name "dinlefix" | head -n 1)
           if [ -z "$PROJECT_DIR" ]; then PROJECT_DIR="."; fi
-          echo "PROJECT_DIR=$PROJECT_DIR" >> "$GITHUB_ENV"
-
-          # Android Klasörü bulma
+          
           ANDROID_DIR=""
           if [ -d "$PROJECT_DIR/android" ]; then
             ANDROID_DIR="$PROJECT_DIR/android"
@@ -82,30 +60,22 @@ jobs:
           fi
 
           if [ -z "$ANDROID_DIR" ]; then
-            echo "Android klasörü bulunamadı, Capacitor ile sıfırdan üretilecek."
             ANDROID_DIR="$PROJECT_DIR/android"
           fi
 
-          echo "Project Klasörü: $PROJECT_DIR"
-          echo "Android Klasörü: $ANDROID_DIR"
+          echo "PROJECT_DIR=$PROJECT_DIR" >> "$GITHUB_ENV"
           echo "ANDROID_DIR=$ANDROID_DIR" >> "$GITHUB_ENV"
 
-      # ============================================================
-      # 5. ORTAM DEĞİŞKENLERİ & TS DÜZELTME
-      # ============================================================
       - name: Ortam Değişkenleri ve Konfigürasyon
         shell: bash
         run: |
           cd "$PROJECT_DIR"
-          
-          # .env Oluştur
           cat << EOF > .env
           LIVEAVATAR_API_KEY=${{ secrets.LIVEAVATAR_API_KEY }}
           LIVEAVATAR_AVATAR_ID=${{ secrets.LIVEAVATAR_AVATAR_ID }}
           LIVEAVATAR_CONTEXT_ID=${{ secrets.LIVEAVATAR_CONTEXT_ID }}
           EOF
 
-          # Capacitor TS hatası oluşmaması için JSON konfigürasyon sağlama
           rm -f capacitor.config.ts
           cat << 'EOF' > capacitor.config.json
           {
@@ -115,9 +85,6 @@ jobs:
           }
           EOF
 
-      # ============================================================
-      # 6. WEB BAĞIMLILIKLARI & BUILD
-      # ============================================================
       - name: Web Bağımlılıkları Kur ve Uygulamayı Derle
         shell: bash
         run: |
@@ -126,46 +93,31 @@ jobs:
           npm install -D typescript || true
           npm run build
 
-      # ============================================================
-      # 7. ANDROID PLATFORMUNU HAZIRLA & ASSETS SENKRONİZASYONU
-      # ============================================================
       - name: Capacitor Android Senkronizasyonu
         shell: bash
         run: |
           cd "$PROJECT_DIR"
-          
           if [ -d "dist" ] && [ ! -d "www" ]; then cp -r dist www; fi
-          
           if [ ! -d "android" ]; then
             npx cap add android || true
           fi
-          
           npx cap sync android || true
 
-      # ============================================================
-      # 8. GRADLE WRAPPER & KOTLIN AYARLARI
-      # ============================================================
       - name: Gradle Wrapper ve Konfigürasyon
         shell: bash
         run: |
-          # Sistem Gradle'ı kur
           sudo apt-get update && sudo apt-get install -y gradle || true
-
           cd "$ANDROID_DIR"
-          
-          # Gradle Wrapper'ı kararlı 8.7 sürümünde üret
           gradle wrapper --gradle-version 8.7 || true
           chmod +x gradlew || true
 
-          # Kotlin ve AndroidX çakışmalarını önleyici properties
           cat << 'EOF' > gradle.properties
           android.useAndroidX=true
           android.enableJetifier=true
           org.gradle.jvmargs=-Xmx2048m -Dfile.encoding=UTF-8
           EOF
 
-          # Kotlin Sürüm Düzeltme Betiği
-          cat > kotlin-fix.gradle <<'EOF'
+          cat << 'EOF' > kotlin-fix.gradle
           allprojects {
               configurations.configureEach {
                   resolutionStrategy.eachDependency { details ->
@@ -175,29 +127,21 @@ jobs:
                   }
               }
           }
-EOF
+          EOF
 
-      # ============================================================
-      # 9. APK DERLE
-      # ============================================================
       - name: APK Derle
         shell: bash
         run: |
           cd "$ANDROID_DIR"
-          
           if [ -f "./gradlew" ]; then
             ./gradlew assembleDebug --init-script kotlin-fix.gradle --no-daemon -x test
           else
             gradle assembleDebug --init-script kotlin-fix.gradle --no-daemon -x test
           fi
 
-      # ============================================================
-      # 10. APK'YI ARTIFACT OLARAK YÜKLE
-      # ============================================================
       - name: APK Yükle
         uses: actions/upload-artifact@v4
         with:
           name: DinleAI-APK
           path: '**/outputs/apk/debug/*.apk'
           if-no-files-found: error
-          
