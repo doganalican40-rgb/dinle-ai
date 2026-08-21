@@ -1,4 +1,4 @@
-Name: Dinle AI APK Oluştur
+name: Dinle AI APK Oluştur
 
 on:
   workflow_dispatch:
