@@ -1,4 +1,4 @@
-name: Dinle AI APK Oluştur
+Name: Dinle AI APK Oluştur
 
 on:
   workflow_dispatch:
@@ -35,22 +35,22 @@ jobs:
           distribution: 'temurin'
           java-version: '17'
 
-      - name: Node.js Kurulumu
+      - name: Node.js Kurulumu (Kararlı Sürüm)
         uses: actions/setup-node@v4
         with:
-          node-version: '22'
+          node-version: '20' # Node 22 esbuild çökmesine sebep olduğu için 20'ye çekildi
 
       - name: Proje Konfigürasyonu ve Web Derleme
         shell: bash
         run: |
-          set -x
+          set -e
           
-          # Ana proje dizinini bul
+          # Dizin tespiti
           P_DIR=$(find . -maxdepth 2 -type d -name "dinlefix" | head -n 1)
           if [ -z "$P_DIR" ]; then P_DIR="."; fi
           cd "$P_DIR"
           
-          # Ortam Değişkenleri
+          # Env Hazırlığı
           echo "LIVEAVATAR_API_KEY=${{ secrets.LIVEAVATAR_API_KEY }}" > .env
           echo "LIVEAVATAR_AVATAR_ID=${{ secrets.LIVEAVATAR_AVATAR_ID }}" >> .env
           echo "LIVEAVATAR_CONTEXT_ID=${{ secrets.LIVEAVATAR_CONTEXT_ID }}" >> .env
@@ -65,32 +65,24 @@ jobs:
           }
           EOF
 
-          # Bağımlılıklar
-          npm install --legacy-peer-deps
-          
-          # Capacitor Kurulumu
-          npm install -g @capacitor/cli@latest
-          npm install -D typescript @capacitor/core@latest @capacitor/android@latest || true
-          
-          # Build
+          # Temiz Kurulum ve Derleme
+          npm ci || npm install --legacy-peer-deps
           npm run build
 
           # Dist hazırlığı
           if [ -d "dist" ] && [ ! -d "www" ]; then cp -r dist www; fi
           
-          # Android Platformunu Hazırla ve Senkronize Et
-          if [ ! -d "android" ]; then
-            npx cap add android
-          fi
+          # Android Senkronizasyonu
+          npx cap add android || true
           npx cap sync android
 
       - name: Android Projesini Derle (APK)
         shell: bash
         run: |
-          set -x
+          set -e
           
-          # Android dizinini bul
-          A_DIR=$(find . -maxdepth 3 -type d -name "android" | head -n 1)
+          # Android dizinine doğru şekilde git
+          A_DIR=$(find . -type d -name "android" | grep -v "node_modules" | head -n 1)
           if [ -z "$A_DIR" ]; then
             echo "HATA: Android klasörü bulunamadı!"
             exit 1
@@ -98,7 +90,7 @@ jobs:
           
           cd "$A_DIR"
 
-          # Gradle Properties
+          # Gradle Ayarları
           cat << 'EOF' > gradle.properties
           android.useAndroidX=true
           android.enableJetifier=true
@@ -118,14 +110,9 @@ jobs:
           }
           EOF
 
-          # Gradlew İzinleri ve Derleme
-          chmod +x gradlew || true
-          
-          if [ -f "./gradlew" ]; then
-            ./gradlew assembleDebug --init-script kotlin-fix.gradle --no-daemon -x test
-          else
-            gradle assembleDebug --init-script kotlin-fix.gradle --no-daemon -x test
-          fi
+          # Derleme
+          chmod +x gradlew
+          ./gradlew assembleDebug --init-script kotlin-fix.gradle --no-daemon -x test
 
       - name: APK Dosyasını Yükle (Artifact)
         uses: actions/upload-artifact@v4
@@ -133,3 +120,4 @@ jobs:
           name: DinleAI-Debug-APK
           path: '**/outputs/apk/debug/*.apk'
           if-no-files-found: error
+          
