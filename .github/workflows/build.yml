@@ -38,24 +38,21 @@ jobs:
       - name: Node.js Kurulumu (Kararlı Sürüm)
         uses: actions/setup-node@v4
         with:
-          node-version: '20' # Node 22 esbuild çökmesine sebep olduğu için 20'ye çekildi
+          node-version: '18'
 
       - name: Proje Konfigürasyonu ve Web Derleme
         shell: bash
         run: |
           set -e
           
-          # Dizin tespiti
           P_DIR=$(find . -maxdepth 2 -type d -name "dinlefix" | head -n 1)
           if [ -z "$P_DIR" ]; then P_DIR="."; fi
           cd "$P_DIR"
           
-          # Env Hazırlığı
           echo "LIVEAVATAR_API_KEY=${{ secrets.LIVEAVATAR_API_KEY }}" > .env
           echo "LIVEAVATAR_AVATAR_ID=${{ secrets.LIVEAVATAR_AVATAR_ID }}" >> .env
           echo "LIVEAVATAR_CONTEXT_ID=${{ secrets.LIVEAVATAR_CONTEXT_ID }}" >> .env
 
-          # Capacitor JSON Konfigürasyon
           rm -f capacitor.config.ts
           cat << 'EOF' > capacitor.config.json
           {
@@ -65,14 +62,21 @@ jobs:
           }
           EOF
 
-          # Temiz Kurulum ve Derleme
-          npm ci || npm install --legacy-peer-deps
-          npm run build
+          # HATA ÇÖZÜMÜ: Cache ve Lock dosyalarını temizle
+          rm -rf node_modules package-lock.json
+          npm cache clean --force
+          
+          # Temiz kurulum
+          npm install --legacy-peer-deps
+          
+          # Linux için esbuild'i yeniden derle
+          npm rebuild esbuild || true
+          
+          # Belleği artırarak Build al
+          NODE_OPTIONS=--max_old_space_size=4096 npm run build
 
-          # Dist hazırlığı
           if [ -d "dist" ] && [ ! -d "www" ]; then cp -r dist www; fi
           
-          # Android Senkronizasyonu
           npx cap add android || true
           npx cap sync android
 
@@ -81,7 +85,6 @@ jobs:
         run: |
           set -e
           
-          # Android dizinine doğru şekilde git
           A_DIR=$(find . -type d -name "android" | grep -v "node_modules" | head -n 1)
           if [ -z "$A_DIR" ]; then
             echo "HATA: Android klasörü bulunamadı!"
@@ -90,14 +93,12 @@ jobs:
           
           cd "$A_DIR"
 
-          # Gradle Ayarları
           cat << 'EOF' > gradle.properties
           android.useAndroidX=true
           android.enableJetifier=true
           org.gradle.jvmargs=-Xmx2048m -Dfile.encoding=UTF-8
           EOF
 
-          # Kotlin Yapılandırması
           cat << 'EOF' > kotlin-fix.gradle
           allprojects {
               configurations.configureEach {
@@ -110,7 +111,6 @@ jobs:
           }
           EOF
 
-          # Derleme
           chmod +x gradlew
           ./gradlew assembleDebug --init-script kotlin-fix.gradle --no-daemon -x test
 
@@ -120,3 +120,4 @@ jobs:
           name: DinleAI-Debug-APK
           path: '**/outputs/apk/debug/*.apk'
           if-no-files-found: error
+          
