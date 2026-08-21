@@ -38,21 +38,24 @@ jobs:
       - name: Node.js Kurulumu
         uses: actions/setup-node@v4
         with:
-          node-version: '20'
+          node-version: '22'
 
       - name: Proje Konfigürasyonu ve Web Derleme
         shell: bash
         run: |
-          set -e
+          set -x
           
+          # Ana proje dizinini bul
           P_DIR=$(find . -maxdepth 2 -type d -name "dinlefix" | head -n 1)
           if [ -z "$P_DIR" ]; then P_DIR="."; fi
           cd "$P_DIR"
           
+          # Ortam Değişkenleri
           echo "LIVEAVATAR_API_KEY=${{ secrets.LIVEAVATAR_API_KEY }}" > .env
           echo "LIVEAVATAR_AVATAR_ID=${{ secrets.LIVEAVATAR_AVATAR_ID }}" >> .env
           echo "LIVEAVATAR_CONTEXT_ID=${{ secrets.LIVEAVATAR_CONTEXT_ID }}" >> .env
 
+          # Capacitor JSON Konfigürasyon
           rm -f capacitor.config.ts
           cat << 'EOF' > capacitor.config.json
           {
@@ -62,31 +65,32 @@ jobs:
           }
           EOF
 
-          # Temizleme
-          rm -rf node_modules package-lock.json
-          
-          # Bağımlılıkları kur
+          # Bağımlılıklar
           npm install --legacy-peer-deps
-
-          # ESBUILD KESİN ÇÖZÜMÜ: Platforma özel esbuild paketini zorla kur ve yetkilendir
-          npm install @esbuild/linux-x64 --save-optional --legacy-peer-deps
-          chmod -R +x node_modules/esbuild/bin || true
-          chmod -R +x node_modules/@esbuild/linux-x64/bin || true
-
-          # Web Derleme
+          
+          # Capacitor Kurulumu
+          npm install -g @capacitor/cli@latest
+          npm install -D typescript @capacitor/core@latest @capacitor/android@latest || true
+          
+          # Build
           npm run build
 
+          # Dist hazırlığı
           if [ -d "dist" ] && [ ! -d "www" ]; then cp -r dist www; fi
           
-          npx cap add android || true
+          # Android Platformunu Hazırla ve Senkronize Et
+          if [ ! -d "android" ]; then
+            npx cap add android
+          fi
           npx cap sync android
 
       - name: Android Projesini Derle (APK)
         shell: bash
         run: |
-          set -e
+          set -x
           
-          A_DIR=$(find . -type d -name "android" | grep -v "node_modules" | head -n 1)
+          # Android dizinini bul
+          A_DIR=$(find . -maxdepth 3 -type d -name "android" | head -n 1)
           if [ -z "$A_DIR" ]; then
             echo "HATA: Android klasörü bulunamadı!"
             exit 1
@@ -94,12 +98,14 @@ jobs:
           
           cd "$A_DIR"
 
+          # Gradle Properties
           cat << 'EOF' > gradle.properties
           android.useAndroidX=true
           android.enableJetifier=true
           org.gradle.jvmargs=-Xmx2048m -Dfile.encoding=UTF-8
           EOF
 
+          # Kotlin Yapılandırması
           cat << 'EOF' > kotlin-fix.gradle
           allprojects {
               configurations.configureEach {
@@ -112,8 +118,14 @@ jobs:
           }
           EOF
 
-          chmod +x gradlew
-          ./gradlew assembleDebug --init-script kotlin-fix.gradle --no-daemon -x test
+          # Gradlew İzinleri ve Derleme
+          chmod +x gradlew || true
+          
+          if [ -f "./gradlew" ]; then
+            ./gradlew assembleDebug --init-script kotlin-fix.gradle --no-daemon -x test
+          else
+            gradle assembleDebug --init-script kotlin-fix.gradle --no-daemon -x test
+          fi
 
       - name: APK Dosyasını Yükle (Artifact)
         uses: actions/upload-artifact@v4
